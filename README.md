@@ -42,6 +42,7 @@ tigerclaw/
     YYYY-MM-DD-slug.md     # Research memos
   .env                     # API keys (gitignored)
   .env.example             # API key template
+  .mcp.json                # MCP server config (Linear, etc.)
   CLAUDE.md                # Claude Code system instructions
   README.md                # This file
 ```
@@ -50,22 +51,36 @@ tigerclaw/
 
 ### Latent Founder Signals
 
-Scans public data for signals that a founder may be starting a new company.
+Scans public data for pre-founder signals — PhD defenses, new repos, conference talks, research papers.
 
-```
-search-founders <query>
-# or
-node .claude/skills/agent-skills/latent-founder-signals/index.js
+```bash
+search-founders "quantum computing"
+search-founders --domain=ai --signal-type=phd --freshness=7 --enrich
+# or directly:
+node .claude/skills/agent-skills/latent-founder-signals/scripts/search.js "query"
 ```
 
 ### Hookdeck Event Router
 
-Posts structured research events to Hookdeck for downstream processing.
+Posts structured JSON payloads (founder signals, investment themes) to Hookdeck.
+
+```bash
+post-hookdeck '{"type": "founder_signal", "name": "...", ...}'
+# or piped:
+echo '{"type": "investment_theme", ...}' | post-hookdeck
+```
+
+### Linear (MCP)
+
+Project management via Linear's official MCP server. Configured in `.mcp.json`.
 
 ```
-post-hookdeck <payload>
-# or
-node .claude/skills/agent-skills/hookdeck/index.js
+# Inside Claude Code, authenticate first:
+/mcp  → click "Authenticate" for linear-server
+
+# Then use naturally:
+"Show me open issues assigned to me"
+"Create issue: Deep dive on Acme Corp Series B"
 ```
 
 ## Shell Aliases

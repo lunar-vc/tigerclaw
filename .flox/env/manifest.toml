@@ -94,8 +94,8 @@ on-activate = '''
 common = '''
   # Aliases
   alias skills="ls -1 $FLOX_ENV_PROJECT/.claude/skills/agent-skills/"
-  alias search-founders="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/latent-founder-signals/index.js"
-  alias post-hookdeck="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/hookdeck/index.js"
+  alias search-founders="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/latent-founder-signals/scripts/search.js"
+  alias post-hookdeck="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/hookdeck/scripts/post.js"
 
   echo ""
   echo "=== Tigerclaw — Agentic VC Research ==="

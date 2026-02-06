@@ -38,11 +38,13 @@ tigerclaw/
         latent-founder-signals/  # Founder signal scanning skill
   .flox/
     env/manifest.toml      # Flox environment config
+  .memory/
+    vc-research.jsonl      # Persistent knowledge graph (gitignored)
   research/                # Research output directory
     YYYY-MM-DD-slug.md     # Research memos
   .env                     # API keys (gitignored)
   .env.example             # API key template
-  .mcp.json                # MCP server config (Linear, etc.)
+  .mcp.json                # MCP servers (Linear, Brave, Memory, Puppeteer)
   CLAUDE.md                # Claude Code system instructions
   README.md                # This file
 ```
@@ -72,16 +74,34 @@ echo '{"type": "investment_theme", ...}' | post-hookdeck
 
 ### Linear (MCP)
 
-Project management via Linear's official MCP server. Configured in `.mcp.json`.
+Project management. Deals go to the **DEAL** team, themes to the **THE** team. Always Triage, always assigned.
 
 ```
 # Inside Claude Code, authenticate first:
 /mcp  → click "Authenticate" for linear-server
 
 # Then use naturally:
-"Show me open issues assigned to me"
-"Create issue: Deep dive on Acme Corp Series B"
+"Create a deal for Sarah Chen — ex-Google AI, launching CV for manufacturing"
+"Create a theme: Proactive SRE incident prediction using telemetry agents"
 ```
+
+### Brave Search (MCP)
+
+Web and news search with freshness filtering. Uses your `BRAVE_API_KEY` from `.env`.
+
+Tools: `brave_web_search`, `brave_news_search`, `brave_summarizer`, `brave_image_search`, `brave_video_search`
+
+### Memory (MCP)
+
+Persistent knowledge graph across Claude Code sessions. Stores people, companies, themes, and relationships. Data lives in `.memory/vc-research.jsonl`.
+
+Tools: `create_entities`, `create_relations`, `add_observations`, `search_nodes`, `open_nodes`, `read_graph`
+
+### Puppeteer (MCP)
+
+Headless Chrome for JS-rendered pages. Uses the auto-detected Chrome from `PUPPETEER_EXECUTABLE_PATH`.
+
+Tools: `puppeteer_navigate`, `puppeteer_screenshot`, `puppeteer_click`, `puppeteer_fill`, `puppeteer_evaluate`
 
 ## Shell Aliases
 

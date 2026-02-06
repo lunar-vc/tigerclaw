@@ -134,6 +134,65 @@ echo '{"type": "founder_signal", ...}' | node .claude/skills/agent-skills/hookde
 }
 ```
 
+### Brave Search (MCP)
+
+Web search, news search, and AI summarization via Brave's official MCP server. More powerful than built-in WebSearch — supports freshness filtering, news-specific queries, image/video search, and result summarization.
+
+**Tools available:**
+- `brave_web_search` — general web search with freshness control
+- `brave_news_search` — current news articles (great for funding announcements, launches, departures)
+- `brave_summarizer` — AI-powered summarization of search results
+- `brave_image_search`, `brave_video_search` — media search
+
+**Requires:** `BRAVE_API_KEY` in `.env` (same key used by latent-founder-signals skill)
+
+**When to use:** Prefer `brave_news_search` over generic WebSearch for deal sourcing — it surfaces recent funding rounds, executive moves, and product launches more reliably. Use `brave_web_search` with freshness parameters for time-sensitive research.
+
+### Memory — Persistent Knowledge Graph (MCP)
+
+A local knowledge graph that persists across Claude Code sessions. Stores entities (people, companies, funds, themes), relationships between them, and observations (facts) attached to each entity.
+
+**Storage:** `.memory/vc-research.jsonl` (local file, gitignored)
+
+**Tools available:**
+- `create_entities` — add people, companies, funds, themes to the graph
+- `create_relations` — connect entities (e.g. "Sequoia invested_in Stripe", "Sarah Chen founded Lattice Optics")
+- `add_observations` — attach facts to entities (e.g. "ARR $5M as of Q4 2025", "PhD MIT 2024")
+- `search_nodes` — query by name, type, or observation content
+- `open_nodes` — fetch specific entities with all their relations and observations
+- `read_graph` — retrieve the entire knowledge graph
+- `delete_entities`, `delete_observations`, `delete_relations` — prune the graph
+
+**Entity types to use:**
+- `person` — founders, investors, executives
+- `company` — startups, incumbents, acquirers
+- `fund` — VC firms, angels, CVCs
+- `theme` — investment theses
+- `market` — sectors, verticals
+- `signal` — tracked signals pending triage
+
+**Relation conventions (active voice):**
+- `founded`, `co_founded`, `works_at`, `left`
+- `invested_in`, `led_round_for`, `board_member_of`
+- `competes_with`, `acquired`, `partners_with`
+- `fits_theme`, `adjacent_to`
+
+**When to use:** At the START of every session, `read_graph` or `search_nodes` to recall prior context. At the END of every research task, persist key findings as entities/relations/observations. This builds a compounding knowledge base across sessions — the more you use it, the more useful it becomes.
+
+### Puppeteer — Headless Browser (MCP)
+
+Direct browser automation for scraping pages that require JavaScript rendering, navigating login-protected portals, or capturing screenshots.
+
+**Tools available:**
+- `puppeteer_navigate` — load a URL in headless Chrome
+- `puppeteer_screenshot` — capture full page or element screenshots
+- `puppeteer_click` — click elements by CSS selector
+- `puppeteer_fill` — type into input fields
+- `puppeteer_select` — choose dropdown options
+- `puppeteer_evaluate` — execute arbitrary JavaScript in the page context
+
+**When to use:** Use for pages that WebFetch can't handle — JavaScript-rendered SPAs, sites that block simple HTTP fetches, or when you need to interact with a page (click through tabs, expand sections, fill search forms). Particularly useful for Crunchbase, LinkedIn public profiles, and company dashboards.
+
 ## Research Workflows
 
 ### 1. Company Deep Dive
@@ -326,9 +385,11 @@ A theme is a specific, actionable investment thesis — granular enough to build
 ## Environment
 
 - **Node.js** is available for running skills
-- **Brave Search** is available via `BRAVE_API_KEY` for web search
+- **Brave Search MCP** — `brave_web_search`, `brave_news_search`, `brave_summarizer` (requires `BRAVE_API_KEY`)
+- **Memory MCP** — persistent knowledge graph at `.memory/vc-research.jsonl` — use it every session
+- **Puppeteer MCP** — headless Chrome for JS-rendered pages and screenshots
+- **Linear MCP** — project/issue management (authenticate with `/mcp`)
 - **Chrome/Puppeteer** is configured for headless browsing (check `PUPPETEER_EXECUTABLE_PATH`)
-- **Linear** is available via MCP for project/issue management (authenticate with `/mcp`)
 - **Research directory** is at `research/` — all outputs go here
 - **jq** is available for JSON processing
 - **ripgrep** (`rg`) is available for fast text search

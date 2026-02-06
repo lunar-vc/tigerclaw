@@ -83,10 +83,36 @@ on-activate = '''
   # --- 4. Ensure research directory exists --------------------------------
   mkdir -p "$FLOX_ENV_PROJECT/research"
 
-  # --- 5. Export dynamic env vars -----------------------------------------
+  # --- 5. Create tigerclaw launcher in env bin ----------------------------
+  mkdir -p "$FLOX_ENV_CACHE/bin"
+  cat > "$FLOX_ENV_CACHE/bin/tigerclaw" << 'LAUNCHER'
+#!/usr/bin/env bash
+printf '\n'
+printf '  \033[38;5;208m╱\033[38;5;214m╱\033[38;5;220m╱\033[0m        \033[1;37mTiger Claw\033[0m\n'
+printf '   \033[38;5;208m╱\033[38;5;214m╱\033[38;5;220m╱\033[0m       \033[2mAgentic VC Research\033[0m\n'
+printf '    \033[38;5;208m╱\033[38;5;214m╱\033[38;5;220m╱\033[0m      \033[2m%s\033[0m\n' "$(pwd)"
+printf '\n'
+exec claude "$@"
+LAUNCHER
+  chmod +x "$FLOX_ENV_CACHE/bin/tigerclaw"
+  export PATH="$FLOX_ENV_CACHE/bin:$PATH"
+
+  # --- 6. Export dynamic env vars -----------------------------------------
   export TIGERCLAW_HOME="$FLOX_ENV_PROJECT"
   export SKILLS_DIR="$FLOX_ENV_PROJECT/.claude/skills/agent-skills"
   export RESEARCH_DIR="$FLOX_ENV_PROJECT/research"
+
+  # --- 7. Welcome banner (in hook to avoid p10k instant prompt conflict) ---
+  echo ""
+  echo "=== Tiger Claw — Agentic VC Research ==="
+  echo "  Node : $(node --version)"
+  echo ""
+  echo "Quick start:"
+  echo "  tigerclaw               — Launch Tiger Claw"
+  echo "  skills                  — List available agent skills"
+  echo "  search-founders <query> — Run latent founder signal scan"
+  echo "  post-hookdeck <payload> — Post event to Hookdeck"
+  echo ""
 '''
 
 ## Profile (sourced by your shell) -----------------------------------------
@@ -96,18 +122,6 @@ common = '''
   alias skills="ls -1 $FLOX_ENV_PROJECT/.claude/skills/agent-skills/"
   alias search-founders="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/latent-founder-signals/scripts/search.js"
   alias post-hookdeck="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/hookdeck/scripts/post.js"
-
-  echo ""
-  echo "=== Tigerclaw — Agentic VC Research ==="
-  echo "  Claude Code : $(claude --version 2>/dev/null || echo 'not found')"
-  echo "  Node        : $(node --version)"
-  echo ""
-  echo "Quick start:"
-  echo "  claude                  — Launch Claude Code with VC research context"
-  echo "  skills                  — List available agent skills"
-  echo "  search-founders <query> — Run latent founder signal scan"
-  echo "  post-hookdeck <payload> — Post event to Hookdeck"
-  echo ""
 '''
 
 ## Options -----------------------------------------------------------------

@@ -1,0 +1,115 @@
+## Flox Environment Manifest — Tigerclaw VC Research
+## https://flox.dev/docs/reference/command-reference/manifest.toml/
+version = 1
+
+## Packages ----------------------------------------------------------------
+[install]
+nodejs_22.pkg-path = "nodejs_22"
+git.pkg-path = "git"
+curl.pkg-path = "curl"
+jq.pkg-path = "jq"
+ripgrep.pkg-path = "ripgrep"
+wget.pkg-path = "wget"
+
+## Static Environment Variables --------------------------------------------
+[vars]
+NODE_ENV = "development"
+PUPPETEER_SKIP_DOWNLOAD = "true"
+
+## Activation Hook (bash) --------------------------------------------------
+[hook]
+on-activate = '''
+  # --- 1. Load .env ------------------------------------------------------
+  if [ -f "$FLOX_ENV_PROJECT/.env" ]; then
+    set -a
+    source "$FLOX_ENV_PROJECT/.env"
+    set +a
+    echo "  Loaded .env"
+  else
+    echo "  WARNING: No .env file found — copy .env.example to .env and fill in your keys"
+  fi
+
+  # --- 2. Detect Chrome / Chromium for Puppeteer --------------------------
+  CHROME_FOUND=""
+
+  # Linux: check if Flox provided chromium
+  if command -v chromium >/dev/null 2>&1; then
+    export PUPPETEER_EXECUTABLE_PATH="$(command -v chromium)"
+    CHROME_FOUND="chromium (Flox)"
+  fi
+
+  # macOS: check Puppeteer cache
+  if [ -z "$CHROME_FOUND" ]; then
+    PUPPETEER_CACHE="$HOME/.cache/puppeteer"
+    CHROME_MAC="$PUPPETEER_CACHE/chrome/mac_arm-*/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+    CHROME_MAC_X86="$PUPPETEER_CACHE/chrome/mac-*/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+    for candidate in $CHROME_MAC $CHROME_MAC_X86; do
+      if [ -x "$candidate" ]; then
+        export PUPPETEER_EXECUTABLE_PATH="$candidate"
+        CHROME_FOUND="Puppeteer cache"
+        break
+      fi
+    done
+  fi
+
+  # Fallback: system Chrome on macOS
+  if [ -z "$CHROME_FOUND" ]; then
+    SYSTEM_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    if [ -x "$SYSTEM_CHROME" ]; then
+      export PUPPETEER_EXECUTABLE_PATH="$SYSTEM_CHROME"
+      CHROME_FOUND="system Chrome"
+    fi
+  fi
+
+  if [ -n "$CHROME_FOUND" ]; then
+    echo "  Chrome: $CHROME_FOUND"
+  else
+    echo "  WARNING: No Chrome found. Run: npx puppeteer browsers install chrome"
+  fi
+
+  # --- 3. Clone / update agent-skills ------------------------------------
+  SKILLS_TARGET="$FLOX_ENV_PROJECT/.claude/skills/agent-skills"
+  if [ -d "$SKILLS_TARGET/.git" ]; then
+    git -C "$SKILLS_TARGET" pull --quiet 2>/dev/null && echo "  Agent skills: updated" || echo "  Agent skills: present (pull failed, offline?)"
+  else
+    mkdir -p "$(dirname "$SKILLS_TARGET")"
+    if git clone --quiet https://github.com/lunar-vc/agent-skills.git "$SKILLS_TARGET" 2>/dev/null; then
+      echo "  Agent skills: cloned"
+    else
+      echo "  WARNING: Could not clone agent-skills (check network / GITHUB_TOKEN)"
+    fi
+  fi
+
+  # --- 4. Ensure research directory exists --------------------------------
+  mkdir -p "$FLOX_ENV_PROJECT/research"
+
+  # --- 5. Export dynamic env vars -----------------------------------------
+  export TIGERCLAW_HOME="$FLOX_ENV_PROJECT"
+  export SKILLS_DIR="$FLOX_ENV_PROJECT/.claude/skills/agent-skills"
+  export RESEARCH_DIR="$FLOX_ENV_PROJECT/research"
+'''
+
+## Profile (sourced by your shell) -----------------------------------------
+[profile]
+common = '''
+  # Aliases
+  alias skills="ls -1 $FLOX_ENV_PROJECT/.claude/skills/agent-skills/"
+  alias search-founders="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/latent-founder-signals/index.js"
+  alias post-hookdeck="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/hookdeck/index.js"
+
+  echo ""
+  echo "=== Tigerclaw — Agentic VC Research ==="
+  echo "  Claude Code : $(claude --version 2>/dev/null || echo 'not found')"
+  echo "  Node        : $(node --version)"
+  echo ""
+  echo "Quick start:"
+  echo "  claude                  — Launch Claude Code with VC research context"
+  echo "  skills                  — List available agent skills"
+  echo "  search-founders <query> — Run latent founder signal scan"
+  echo "  post-hookdeck <payload> — Post event to Hookdeck"
+  echo ""
+'''
+
+## Options -----------------------------------------------------------------
+[options]
+systems = ["aarch64-darwin", "x86_64-linux", "aarch64-linux"]

@@ -1,0 +1,18 @@
+# Environment secrets
+.env
+
+# Dependencies
+node_modules/
+
+# Claude Code local settings (per-machine)
+.claude/settings.local.json
+
+# Cloned skills repo (pulled on flox activate)
+.claude/skills/agent-skills/
+
+# macOS
+.DS_Store
+
+# Research output (large/generated files)
+research/*.json
+research/*.csv

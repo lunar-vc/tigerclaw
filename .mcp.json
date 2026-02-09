@@ -7,17 +7,14 @@
     "brave-search": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@brave/brave-search-mcp-server"],
-      "env": {
-        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
-      }
+      "args": ["-y", "@brave/brave-search-mcp-server"]
     },
     "memory": {
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-memory"],
       "env": {
-        "MEMORY_FILE_PATH": "${TIGERCLAW_HOME}/.memory/vc-research.jsonl"
+        "MEMORY_FILE_PATH": ".memory/vc-research.jsonl"
       }
     },
     "puppeteer": {
@@ -25,8 +22,7 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
       "env": {
-        "PUPPETEER_LAUNCH_OPTIONS": "{\"headless\":true}",
-        "PUPPETEER_EXECUTABLE_PATH": "${PUPPETEER_EXECUTABLE_PATH}"
+        "PUPPETEER_LAUNCH_OPTIONS": "{\"headless\":true}"
       }
     }
   }

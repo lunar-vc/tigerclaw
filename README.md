@@ -14,7 +14,7 @@ Flox environment for agentic VC research with Claude Code.
 
 ```bash
 # 1. Clone the repo
-git clone <your-tigerclaw-repo-url> && cd tigerclaw
+git clone https://github.com/lunar-vc/tigerclaw.git && cd tigerclaw
 
 # 2. Activate the environment (installs Node.js, tools, clones skills)
 flox activate

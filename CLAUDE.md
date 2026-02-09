@@ -193,6 +193,60 @@ Direct browser automation for scraping pages that require JavaScript rendering, 
 
 **When to use:** Use for pages that WebFetch can't handle — JavaScript-rendered SPAs, sites that block simple HTTP fetches, or when you need to interact with a page (click through tabs, expand sections, fill search forms). Particularly useful for Crunchbase, LinkedIn public profiles, and company dashboards.
 
+### Reddit Fetch (`reddit-fetch`)
+
+Fetches content from Reddit using Gemini CLI when WebFetch is blocked (403, auth-wall).
+
+**Location:** `.claude/skills/agent-skills/reddit-fetch/`
+**Requires:** `gemini` CLI installed, `tmux`
+
+**How it works:** Spawns a Gemini CLI session in tmux, sends Reddit queries, and captures the output.
+
+**Usage:**
+```bash
+# Start a Gemini session
+tmux new-session -d -s gemini_reddit -x 200 -y 50
+tmux send-keys -t gemini_reddit 'gemini -m gemini-3-pro-preview' Enter
+sleep 3
+
+# Send query and capture
+tmux send-keys -t gemini_reddit 'Search Reddit for discussions about quantum computing startups' Enter
+sleep 30
+tmux capture-pane -t gemini_reddit -p -S -500
+
+# Cleanup
+tmux kill-session -t gemini_reddit
+```
+
+**When to use:** When WebFetch returns 403 or blocked errors for Reddit URLs. Use for researching topics on Reddit, fetching specific threads, or mining subreddits for founder/startup signals.
+
+### LinkedIn Fetch (`linkedin-fetch`)
+
+Fetches content from LinkedIn using Gemini CLI when WebFetch is blocked (403, auth-wall).
+
+**Location:** `.claude/skills/agent-skills/linkedin-fetch/`
+**Requires:** `gemini` CLI installed, `tmux`
+
+**How it works:** Spawns a Gemini CLI session in tmux, sends LinkedIn queries, and captures the output.
+
+**Usage:**
+```bash
+# Start a Gemini session
+tmux new-session -d -s gemini_linkedin -x 200 -y 50
+tmux send-keys -t gemini_linkedin 'gemini -m gemini-3-pro-preview' Enter
+sleep 3
+
+# Send query and capture
+tmux send-keys -t gemini_linkedin 'Look up Dr. Sarah Chen on LinkedIn and summarize her background' Enter
+sleep 30
+tmux capture-pane -t gemini_linkedin -p -S -500
+
+# Cleanup
+tmux kill-session -t gemini_linkedin
+```
+
+**When to use:** When WebFetch returns 403 or auth-wall errors for LinkedIn URLs. Use for founder background checks, team research, executive departure tracking, and company page analysis.
+
 ## Research Workflows
 
 ### 1. Company Deep Dive

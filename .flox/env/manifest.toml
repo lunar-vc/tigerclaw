@@ -10,6 +10,7 @@ curl.pkg-path = "curl"
 jq.pkg-path = "jq"
 ripgrep.pkg-path = "ripgrep"
 wget.pkg-path = "wget"
+bc.pkg-path = "bc"
 
 ## Static Environment Variables --------------------------------------------
 [vars]

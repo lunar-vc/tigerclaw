@@ -4,26 +4,51 @@ Flox environment for agentic VC research with Claude Code.
 
 ## Prerequisites
 
-- [Flox](https://flox.dev/) installed
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed
-- API keys (see `.env.example`)
+| Dependency | Install |
+|------------|---------|
+| [Flox](https://flox.dev/) | `curl -fsSL https://flox.dev/install \| bash` |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm install -g @anthropic-ai/claude-code` |
+| API keys | See `.env.example` — at minimum you need a [Brave Search API key](https://brave.com/search/api/) |
 
 ## Quick Start
 
 ```bash
-# 1. Activate the environment (installs packages, clones skills)
+# 1. Clone the repo
+git clone <your-tigerclaw-repo-url> && cd tigerclaw
+
+# 2. Activate the environment (installs Node.js, tools, clones skills)
 flox activate
 
-# 2. Copy and fill in your API keys
+# 3. Copy and fill in your API keys
 cp .env.example .env
-# Edit .env with your keys
+# Edit .env — BRAVE_API_KEY is required, others are optional
 
-# 3. Re-activate to load keys
+# 4. Re-activate to load keys
 flox activate
 
-# 4. Launch Claude Code
-claude
+# 5. Validate everything works
+tigerclaw-doctor
+
+# 6. Launch Claude Code
+tigerclaw
 ```
+
+### What `flox activate` does
+
+1. Installs Node.js 22, git, curl, jq, ripgrep via Nix (reproducible, locked)
+2. Loads `.env` into the shell environment
+3. Auto-detects Chrome/Chromium for Puppeteer
+4. Clones [agent-skills](https://github.com/lunar-vc/agent-skills) into `.claude/skills/agent-skills/`
+5. Creates `research/` directory
+6. Sets up `tigerclaw`, `tigerclaw-doctor`, `skills`, `search-founders`, `post-hookdeck` commands
+
+### Validating your setup
+
+```bash
+tigerclaw-doctor
+```
+
+This checks: Flox, Node.js, Claude Code, `.env` keys (validates Brave API key with a live request), Chrome/Puppeteer, agent-skills, MCP config, and project structure. Run it after setup or any time something seems off.
 
 ## Directory Structure
 
@@ -42,12 +67,22 @@ tigerclaw/
     vc-research.jsonl      # Persistent knowledge graph (gitignored)
   research/                # Research output directory
     YYYY-MM-DD-slug.md     # Research memos
+  scripts/
+    doctor.sh              # Environment health check
   .env                     # API keys (gitignored)
   .env.example             # API key template
   .mcp.json                # MCP servers (Linear, Brave, Memory, Puppeteer)
   CLAUDE.md                # Claude Code system instructions
   README.md                # This file
 ```
+
+## Platform Support
+
+Flox locks dependencies for these platforms:
+
+- **macOS Apple Silicon** (`aarch64-darwin`) — primary dev environment
+- **Linux x86-64** (`x86_64-linux`)
+- **Linux ARM64** (`aarch64-linux`)
 
 ## Available Skills
 
@@ -107,6 +142,8 @@ Tools: `puppeteer_navigate`, `puppeteer_screenshot`, `puppeteer_click`, `puppete
 
 | Alias | Description |
 |-------|-------------|
+| `tigerclaw` | Launch Claude Code with banner |
+| `tigerclaw-doctor` | Check environment health |
 | `skills` | List available agent skills |
 | `search-founders` | Run latent founder signal scan |
 | `post-hookdeck` | Post event to Hookdeck |
@@ -136,6 +173,8 @@ Example prompts for research loops:
 
 ## Troubleshooting
 
+Run `tigerclaw-doctor` first — it checks everything and tells you exactly what to fix.
+
 **"No .env file found" warning**
 Copy `.env.example` to `.env` and fill in your API keys.
 
@@ -147,3 +186,6 @@ Check your network connection. If behind a firewall, set `GITHUB_TOKEN` in `.env
 
 **`claude` command not found**
 Install Claude Code: `npm install -g @anthropic-ai/claude-code`
+
+**`flox` command not found**
+Install Flox: `curl -fsSL https://flox.dev/install | bash`

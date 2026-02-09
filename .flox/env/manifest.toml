@@ -102,17 +102,34 @@ LAUNCHER
   export SKILLS_DIR="$FLOX_ENV_PROJECT/.claude/skills/agent-skills"
   export RESEARCH_DIR="$FLOX_ENV_PROJECT/research"
 
-  # --- 7. Welcome banner (in hook to avoid p10k instant prompt conflict) ---
+  # --- 7. Post-activate validation ------------------------------------------
+  TC_WARNINGS=0
+  if [ ! -f "$FLOX_ENV_PROJECT/.env" ]; then
+    TC_WARNINGS=$((TC_WARNINGS + 1))
+  fi
+  if [ -z "$CHROME_FOUND" ]; then
+    TC_WARNINGS=$((TC_WARNINGS + 1))
+  fi
+  if [ ! -d "$FLOX_ENV_PROJECT/.claude/skills/agent-skills/.git" ]; then
+    TC_WARNINGS=$((TC_WARNINGS + 1))
+  fi
+
+  # --- 8. Welcome banner (in hook to avoid p10k instant prompt conflict) ---
   echo ""
   echo "=== Tiger Claw — Agentic VC Research ==="
   echo "  Node : $(node --version)"
   echo ""
   echo "Quick start:"
   echo "  tigerclaw               — Launch Tiger Claw"
+  echo "  tigerclaw-doctor        — Check environment health"
   echo "  skills                  — List available agent skills"
   echo "  search-founders <query> — Run latent founder signal scan"
   echo "  post-hookdeck <payload> — Post event to Hookdeck"
   echo ""
+  if [ "$TC_WARNINGS" -gt 0 ]; then
+    echo "  ⚠ $TC_WARNINGS issue(s) detected — run tigerclaw-doctor for details"
+    echo ""
+  fi
 '''
 
 ## Profile (sourced by your shell) -----------------------------------------
@@ -122,6 +139,7 @@ common = '''
   alias skills="ls -1 $FLOX_ENV_PROJECT/.claude/skills/agent-skills/"
   alias search-founders="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/latent-founder-signals/scripts/search.js"
   alias post-hookdeck="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/hookdeck/scripts/post.js"
+  alias tigerclaw-doctor="bash $FLOX_ENV_PROJECT/scripts/doctor.sh"
 '''
 
 ## Options -----------------------------------------------------------------

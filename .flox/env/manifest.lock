@@ -3,6 +3,9 @@
   "manifest": {
     "version": 1,
     "install": {
+      "bc": {
+        "pkg-path": "bc"
+      },
       "curl": {
         "pkg-path": "curl"
       },
@@ -14,6 +17,9 @@
       },
       "nodejs_22": {
         "pkg-path": "nodejs_22"
+      },
+      "poppler_utils": {
+        "pkg-path": "poppler_utils"
       },
       "ripgrep": {
         "pkg-path": "ripgrep"
@@ -27,10 +33,10 @@
       "PUPPETEER_SKIP_DOWNLOAD": "true"
     },
     "hook": {
-      "on-activate": "  # --- 1. Load .env ------------------------------------------------------\n  if [ -f \"$FLOX_ENV_PROJECT/.env\" ]; then\n    set -a\n    source \"$FLOX_ENV_PROJECT/.env\"\n    set +a\n    echo \"  Loaded .env\"\n  else\n    echo \"  WARNING: No .env file found — copy .env.example to .env and fill in your keys\"\n  fi\n\n  # --- 2. Detect Chrome / Chromium for Puppeteer --------------------------\n  CHROME_FOUND=\"\"\n\n  # Linux: check if Flox provided chromium\n  if command -v chromium >/dev/null 2>&1; then\n    export PUPPETEER_EXECUTABLE_PATH=\"$(command -v chromium)\"\n    CHROME_FOUND=\"chromium (Flox)\"\n  fi\n\n  # macOS: check Puppeteer cache\n  if [ -z \"$CHROME_FOUND\" ]; then\n    PUPPETEER_CACHE=\"$HOME/.cache/puppeteer\"\n    CHROME_MAC=\"$PUPPETEER_CACHE/chrome/mac_arm-*/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing\"\n    CHROME_MAC_X86=\"$PUPPETEER_CACHE/chrome/mac-*/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing\"\n    for candidate in $CHROME_MAC $CHROME_MAC_X86; do\n      if [ -x \"$candidate\" ]; then\n        export PUPPETEER_EXECUTABLE_PATH=\"$candidate\"\n        CHROME_FOUND=\"Puppeteer cache\"\n        break\n      fi\n    done\n  fi\n\n  # Fallback: system Chrome on macOS\n  if [ -z \"$CHROME_FOUND\" ]; then\n    SYSTEM_CHROME=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\"\n    if [ -x \"$SYSTEM_CHROME\" ]; then\n      export PUPPETEER_EXECUTABLE_PATH=\"$SYSTEM_CHROME\"\n      CHROME_FOUND=\"system Chrome\"\n    fi\n  fi\n\n  if [ -n \"$CHROME_FOUND\" ]; then\n    echo \"  Chrome: $CHROME_FOUND\"\n  else\n    echo \"  WARNING: No Chrome found. Run: npx puppeteer browsers install chrome\"\n  fi\n\n  # --- 3. Clone / update agent-skills ------------------------------------\n  SKILLS_TARGET=\"$FLOX_ENV_PROJECT/.claude/skills/agent-skills\"\n  if [ -d \"$SKILLS_TARGET/.git\" ]; then\n    git -C \"$SKILLS_TARGET\" pull --quiet 2>/dev/null && echo \"  Agent skills: updated\" || echo \"  Agent skills: present (pull failed, offline?)\"\n  else\n    mkdir -p \"$(dirname \"$SKILLS_TARGET\")\"\n    if git clone --quiet https://github.com/lunar-vc/agent-skills.git \"$SKILLS_TARGET\" 2>/dev/null; then\n      echo \"  Agent skills: cloned\"\n    else\n      echo \"  WARNING: Could not clone agent-skills (check network / GITHUB_TOKEN)\"\n    fi\n  fi\n\n  # --- 4. Ensure research directory exists --------------------------------\n  mkdir -p \"$FLOX_ENV_PROJECT/research\"\n\n  # --- 5. Create tigerclaw launcher in env bin ----------------------------\n  mkdir -p \"$FLOX_ENV_CACHE/bin\"\n  cat > \"$FLOX_ENV_CACHE/bin/tigerclaw\" << 'LAUNCHER'\n#!/usr/bin/env bash\nprintf '\\n'\nprintf '  \\033[38;5;208m╱\\033[38;5;214m╱\\033[38;5;220m╱\\033[0m        \\033[1;37mTiger Claw\\033[0m\\n'\nprintf '   \\033[38;5;208m╱\\033[38;5;214m╱\\033[38;5;220m╱\\033[0m       \\033[2mAgentic VC Research\\033[0m\\n'\nprintf '    \\033[38;5;208m╱\\033[38;5;214m╱\\033[38;5;220m╱\\033[0m      \\033[2m%s\\033[0m\\n' \"$(pwd)\"\nprintf '\\n'\nexec claude \"$@\"\nLAUNCHER\n  chmod +x \"$FLOX_ENV_CACHE/bin/tigerclaw\"\n  export PATH=\"$FLOX_ENV_CACHE/bin:$PATH\"\n\n  # --- 6. Export dynamic env vars -----------------------------------------\n  export TIGERCLAW_HOME=\"$FLOX_ENV_PROJECT\"\n  export SKILLS_DIR=\"$FLOX_ENV_PROJECT/.claude/skills/agent-skills\"\n  export RESEARCH_DIR=\"$FLOX_ENV_PROJECT/research\"\n\n  # --- 7. Welcome banner (in hook to avoid p10k instant prompt conflict) ---\n  echo \"\"\n  echo \"=== Tiger Claw — Agentic VC Research ===\"\n  echo \"  Node : $(node --version)\"\n  echo \"\"\n  echo \"Quick start:\"\n  echo \"  tigerclaw               — Launch Tiger Claw\"\n  echo \"  skills                  — List available agent skills\"\n  echo \"  search-founders <query> — Run latent founder signal scan\"\n  echo \"  post-hookdeck <payload> — Post event to Hookdeck\"\n  echo \"\"\n"
+      "on-activate": "  # --- 1. Load .env ------------------------------------------------------\n  if [ -f \"$FLOX_ENV_PROJECT/.env\" ]; then\n    set -a\n    source \"$FLOX_ENV_PROJECT/.env\"\n    set +a\n    echo \"  Loaded .env\"\n  else\n    echo \"  WARNING: No .env file found — copy .env.example to .env and fill in your keys\"\n  fi\n\n  # --- 2. Detect Chrome / Chromium for Puppeteer --------------------------\n  CHROME_FOUND=\"\"\n\n  # Linux: check if Flox provided chromium\n  if command -v chromium >/dev/null 2>&1; then\n    export PUPPETEER_EXECUTABLE_PATH=\"$(command -v chromium)\"\n    CHROME_FOUND=\"chromium (Flox)\"\n  fi\n\n  # macOS: check Puppeteer cache\n  if [ -z \"$CHROME_FOUND\" ]; then\n    PUPPETEER_CACHE=\"$HOME/.cache/puppeteer\"\n    CHROME_MAC=\"$PUPPETEER_CACHE/chrome/mac_arm-*/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing\"\n    CHROME_MAC_X86=\"$PUPPETEER_CACHE/chrome/mac-*/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing\"\n    for candidate in $CHROME_MAC $CHROME_MAC_X86; do\n      if [ -x \"$candidate\" ]; then\n        export PUPPETEER_EXECUTABLE_PATH=\"$candidate\"\n        CHROME_FOUND=\"Puppeteer cache\"\n        break\n      fi\n    done\n  fi\n\n  # Fallback: system Chrome on macOS\n  if [ -z \"$CHROME_FOUND\" ]; then\n    SYSTEM_CHROME=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\"\n    if [ -x \"$SYSTEM_CHROME\" ]; then\n      export PUPPETEER_EXECUTABLE_PATH=\"$SYSTEM_CHROME\"\n      CHROME_FOUND=\"system Chrome\"\n    fi\n  fi\n\n  if [ -n \"$CHROME_FOUND\" ]; then\n    echo \"  Chrome: $CHROME_FOUND\"\n  else\n    echo \"  WARNING: No Chrome found. Run: npx puppeteer browsers install chrome\"\n  fi\n\n  # --- 3. Clone / update agent-skills ------------------------------------\n  SKILLS_TARGET=\"$FLOX_ENV_PROJECT/.claude/skills/agent-skills\"\n  if [ -d \"$SKILLS_TARGET/.git\" ]; then\n    git -C \"$SKILLS_TARGET\" pull --quiet 2>/dev/null && echo \"  Agent skills: updated\" || echo \"  Agent skills: present (pull failed, offline?)\"\n  else\n    mkdir -p \"$(dirname \"$SKILLS_TARGET\")\"\n    if git clone --quiet https://github.com/lunar-vc/agent-skills.git \"$SKILLS_TARGET\" 2>/dev/null; then\n      echo \"  Agent skills: cloned\"\n    else\n      echo \"  WARNING: Could not clone agent-skills (check network / GITHUB_TOKEN)\"\n    fi\n  fi\n\n  # --- 4. Ensure research directory exists --------------------------------\n  mkdir -p \"$FLOX_ENV_PROJECT/research\"\n\n  # --- 5. Create tigerclaw launcher in env bin ----------------------------\n  mkdir -p \"$FLOX_ENV_CACHE/bin\"\n  cat > \"$FLOX_ENV_CACHE/bin/tigerclaw\" << 'LAUNCHER'\n#!/usr/bin/env bash\nprintf '\\n'\nprintf '  \\033[38;5;208m╱\\033[38;5;214m╱\\033[38;5;220m╱\\033[0m        \\033[1;37mTiger Claw\\033[0m\\n'\nprintf '   \\033[38;5;208m╱\\033[38;5;214m╱\\033[38;5;220m╱\\033[0m       \\033[2mAgentic VC Research\\033[0m\\n'\nprintf '    \\033[38;5;208m╱\\033[38;5;214m╱\\033[38;5;220m╱\\033[0m      \\033[2m%s\\033[0m\\n' \"$(pwd)\"\nprintf '\\n'\nexec claude \"$@\"\nLAUNCHER\n  chmod +x \"$FLOX_ENV_CACHE/bin/tigerclaw\"\n  export PATH=\"$FLOX_ENV_CACHE/bin:$PATH\"\n\n  # --- 6. Export dynamic env vars -----------------------------------------\n  export TIGERCLAW_HOME=\"$FLOX_ENV_PROJECT\"\n  export SKILLS_DIR=\"$FLOX_ENV_PROJECT/.claude/skills/agent-skills\"\n  export RESEARCH_DIR=\"$FLOX_ENV_PROJECT/research\"\n\n  # --- 7. Post-activate validation ------------------------------------------\n  TC_WARNINGS=0\n  if [ ! -f \"$FLOX_ENV_PROJECT/.env\" ]; then\n    TC_WARNINGS=$((TC_WARNINGS + 1))\n  fi\n  if [ -z \"$CHROME_FOUND\" ]; then\n    TC_WARNINGS=$((TC_WARNINGS + 1))\n  fi\n  if [ ! -d \"$FLOX_ENV_PROJECT/.claude/skills/agent-skills/.git\" ]; then\n    TC_WARNINGS=$((TC_WARNINGS + 1))\n  fi\n\n  # --- 8. Welcome banner (in hook to avoid p10k instant prompt conflict) ---\n  echo \"\"\n  echo \"=== Tiger Claw — Agentic VC Research ===\"\n  echo \"  Node : $(node --version)\"\n  echo \"\"\n  echo \"Quick start:\"\n  echo \"  tigerclaw               — Launch Tiger Claw\"\n  echo \"  tigerclaw-doctor        — Check environment health\"\n  echo \"  skills                  — List available agent skills\"\n  echo \"  search-founders <query> — Run latent founder signal scan\"\n  echo \"  post-hookdeck <payload> — Post event to Hookdeck\"\n  echo \"\"\n  if [ \"$TC_WARNINGS\" -gt 0 ]; then\n    echo \"  ⚠ $TC_WARNINGS issue(s) detected — run tigerclaw-doctor for details\"\n    echo \"\"\n  fi\n"
     },
     "profile": {
-      "common": "  # Aliases\n  alias skills=\"ls -1 $FLOX_ENV_PROJECT/.claude/skills/agent-skills/\"\n  alias search-founders=\"node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/latent-founder-signals/scripts/search.js\"\n  alias post-hookdeck=\"node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/hookdeck/scripts/post.js\"\n"
+      "common": "  # Aliases\n  alias skills=\"ls -1 $FLOX_ENV_PROJECT/.claude/skills/agent-skills/\"\n  alias search-founders=\"node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/latent-founder-signals/scripts/search.js\"\n  alias post-hookdeck=\"node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/hookdeck/scripts/post.js\"\n  alias tigerclaw-doctor=\"bash $FLOX_ENV_PROJECT/scripts/doctor.sh\"\n"
     },
     "options": {
       "systems": [
@@ -42,34 +48,121 @@
   },
   "packages": [
     {
-      "attr_path": "curl",
+      "attr_path": "bc",
       "broken": false,
-      "derivation": "/nix/store/vn7qyigb9aqbzk93v3yjz3zdacbp48vw-curl-8.17.0.drv",
-      "description": "Command line tool for transferring files with URL syntax",
-      "install_id": "curl",
-      "license": "curl",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "curl-8.17.0",
-      "pname": "curl",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T04:35:54.859356Z",
+      "derivation": "/nix/store/8xsp95sd927wqbjsrazj4x5x8pbjlgii-bc-1.08.2.drv",
+      "description": "GNU software calculator",
+      "install_id": "bc",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "bc-1.08.2",
+      "pname": "bc",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:08:14.703045Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "8.17.0",
+      "version": "1.08.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/ky94p3p2jf3my98449cd52vjldbdhh6p-bc-1.08.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "bc",
+      "broken": false,
+      "derivation": "/nix/store/a5fxr0bjsvigl8w0bn9h54lvnmxxs5kf-bc-1.08.2.drv",
+      "description": "GNU software calculator",
+      "install_id": "bc",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "bc-1.08.2",
+      "pname": "bc",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:18:25.820769Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.08.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/iry2z1wg8i3f1gzqzbb1rakfrslx3mlb-bc-1.08.2"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "bc",
+      "broken": false,
+      "derivation": "/nix/store/r2ykzg62nkwnjh631y4kyby3q74phr9g-bc-1.08.2.drv",
+      "description": "GNU software calculator",
+      "install_id": "bc",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "bc-1.08.2",
+      "pname": "bc",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T03:00:53.956299Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.08.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/2jmzd65ircxwgwgh2zg97sii7sv1w9f1-bc-1.08.2"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "curl",
+      "broken": false,
+      "derivation": "/nix/store/g9b4bixj0n0bv1vf9bz0kakq86hh24h4-curl-8.16.0.drv",
+      "description": "Command line tool for transferring files with URL syntax",
+      "install_id": "curl",
+      "license": "curl",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "curl-8.16.0",
+      "pname": "curl",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:08:15.120034Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "8.16.0",
       "outputs_to_install": [
         "bin",
         "man"
       ],
       "outputs": {
-        "bin": "/nix/store/qncd2qavd8nj797izhqzyzz5q9cr5bwx-curl-8.17.0-bin",
-        "dev": "/nix/store/27hnypizfhndg47s81v9gvc9ywsiqq5p-curl-8.17.0-dev",
-        "devdoc": "/nix/store/izi1l0h196fyaf7w06wqziq02m43acij-curl-8.17.0-devdoc",
-        "man": "/nix/store/2swlvcnn1xrsanyd4fc8mdlmx6c216dd-curl-8.17.0-man",
-        "out": "/nix/store/vzv2n6g3g6ynxdzflh4s5crn6px9b0wb-curl-8.17.0"
+        "bin": "/nix/store/982cq6ga80yn9nghx479fbqqwf7kf8n1-curl-8.16.0-bin",
+        "dev": "/nix/store/qxzi15y4apihsg2infxn66b6hz5lws3h-curl-8.16.0-dev",
+        "devdoc": "/nix/store/bz1ap1ahksz62gz79h8anfhsyz1ir0jw-curl-8.16.0-devdoc",
+        "man": "/nix/store/rsdippinyvz3myz505vi6sgx8vmh30px-curl-8.16.0-man",
+        "out": "/nix/store/8fgfydjv40m1pw8bpwm30kxw24284fvg-curl-8.16.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -78,35 +171,33 @@
     {
       "attr_path": "curl",
       "broken": false,
-      "derivation": "/nix/store/sbj1ds2n743q4zhfccjaylg7jvjp9q9n-curl-8.17.0.drv",
+      "derivation": "/nix/store/iij2ckwkfzzc50q6yr4jrqxc4kqiyrz6-curl-8.16.0.drv",
       "description": "Command line tool for transferring files with URL syntax",
       "install_id": "curl",
       "license": "curl",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "curl-8.17.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "curl-8.16.0",
       "pname": "curl",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T05:05:23.310360Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:18:26.359385Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "8.17.0",
+      "version": "8.16.0",
       "outputs_to_install": [
         "bin",
-        "bin",
-        "man",
         "man"
       ],
       "outputs": {
-        "bin": "/nix/store/wqz5jf32ywajllzfry6gjxhddbh21lvs-curl-8.17.0-bin",
-        "debug": "/nix/store/vwgx2lvkk8kygx6006a81qhb48f9hn7f-curl-8.17.0-debug",
-        "dev": "/nix/store/638hqfczwic54cln0cavh38l1a140ij3-curl-8.17.0-dev",
-        "devdoc": "/nix/store/gl74x82b8xiprhpqnw86rvha06gjzk8v-curl-8.17.0-devdoc",
-        "man": "/nix/store/9bpk7v03yq152wvf5rbv7pr7f5mvj7xp-curl-8.17.0-man",
-        "out": "/nix/store/7rls1f8815qd0b6lgicc53jwl7qs3fa2-curl-8.17.0"
+        "bin": "/nix/store/qnakzidljavpz27az7gjkyydb7ckjg6r-curl-8.16.0-bin",
+        "debug": "/nix/store/zxlv6n85qw1lzmx4xblgc0lz1vv0hg1f-curl-8.16.0-debug",
+        "dev": "/nix/store/aypq6najvfyhzx4k80a1vy329qmqj9zb-curl-8.16.0-dev",
+        "devdoc": "/nix/store/b7w1516fx1mywmkl9dqsm1rnjmpvz7a3-curl-8.16.0-devdoc",
+        "man": "/nix/store/dfgh660rbbj8s3l3xvy8klmkks4pkg3w-curl-8.16.0-man",
+        "out": "/nix/store/pl917hpmpx64fisdisv2zjmk09grvm4g-curl-8.16.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -115,35 +206,33 @@
     {
       "attr_path": "curl",
       "broken": false,
-      "derivation": "/nix/store/a1kpbbk1lnnaw2gl5pffs92hxm54mjpm-curl-8.17.0.drv",
+      "derivation": "/nix/store/yh73y300l9r1csw9zghd7im341rrp106-curl-8.16.0.drv",
       "description": "Command line tool for transferring files with URL syntax",
       "install_id": "curl",
       "license": "curl",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "curl-8.17.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "curl-8.16.0",
       "pname": "curl",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T06:05:46.200648Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T03:00:54.560041Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "8.17.0",
+      "version": "8.16.0",
       "outputs_to_install": [
         "bin",
-        "bin",
-        "man",
         "man"
       ],
       "outputs": {
-        "bin": "/nix/store/jqfr3p49g3lch84y45jfzw9fshlv8jyp-curl-8.17.0-bin",
-        "debug": "/nix/store/lhdva5pd84cx2bm7gymrm7x75m95s3gb-curl-8.17.0-debug",
-        "dev": "/nix/store/gy73p60881n9nagq7grffjgy4ycw9a85-curl-8.17.0-dev",
-        "devdoc": "/nix/store/74hjnnn67f1ax4mkx4nwbcxaih6k5hrv-curl-8.17.0-devdoc",
-        "man": "/nix/store/msaigk8gy4rikyxbxiqksh8njd5dx13h-curl-8.17.0-man",
-        "out": "/nix/store/8ylzjm58ghiq60vklfy58j14sgryjjzw-curl-8.17.0"
+        "bin": "/nix/store/xvh4bi0cc2cw18lpn6ax9m4zwnn1s9lj-curl-8.16.0-bin",
+        "debug": "/nix/store/33lwk5v78214pmlnhphbijpvbh8gjbbq-curl-8.16.0-debug",
+        "dev": "/nix/store/b65dj8iryqd1bss2qlg5ipxqndngcl9n-curl-8.16.0-dev",
+        "devdoc": "/nix/store/bz67f9xwj2i7zanwkrxb6dy9bbm2283d-curl-8.16.0-devdoc",
+        "man": "/nix/store/q4jbdyq7f0zks4i9xhfyx2pj6x92g9dj-curl-8.16.0-man",
+        "out": "/nix/store/8np9zvwqmwsnbkbrwm8x7jq4ygdkjz5g-curl-8.16.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -152,28 +241,28 @@
     {
       "attr_path": "git",
       "broken": false,
-      "derivation": "/nix/store/zbqxdvgi7hl7636mav0jjvdzc44fw0w0-git-2.52.0.drv",
+      "derivation": "/nix/store/wlsljhn89ygfpl3z6sl4lhvllscd86xz-git-2.51.0.drv",
       "description": "Distributed version control system",
       "install_id": "git",
       "license": "GPL-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "git-2.52.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "git-2.51.0",
       "pname": "git",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T04:35:55.509259Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:08:16.450292Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2.52.0",
+      "version": "2.51.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "doc": "/nix/store/p0dx3053175fpr3kjf0fqgs9x6gm3dri-git-2.52.0-doc",
-        "out": "/nix/store/vnhprisb777byfjpp5mdd0mxwkpvhbc0-git-2.52.0"
+        "doc": "/nix/store/fwx23zsz09rirgfp0r5kzsh7nbg6d9ff-git-2.51.0-doc",
+        "out": "/nix/store/1xqc4nc97vwmx6dqrk0zns79xncb5chw-git-2.51.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -182,29 +271,29 @@
     {
       "attr_path": "git",
       "broken": false,
-      "derivation": "/nix/store/xh28gpzhgrisb6hvk986vvswa75l6bhw-git-2.52.0.drv",
+      "derivation": "/nix/store/2y7pmls9hlkj2a3y5b3660ln7hvxl62m-git-2.51.0.drv",
       "description": "Distributed version control system",
       "install_id": "git",
       "license": "GPL-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "git-2.52.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "git-2.51.0",
       "pname": "git",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T05:05:24.320815Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:18:27.374629Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2.52.0",
+      "version": "2.51.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "debug": "/nix/store/cx033x4nmr12d9dcn8hxjfrajc3983f0-git-2.52.0-debug",
-        "doc": "/nix/store/ylsmgdrnp78p8hn7n9lxpada78dka41v-git-2.52.0-doc",
-        "out": "/nix/store/sd4bjblxfljbm13mpl50x8g336gw2dri-git-2.52.0"
+        "debug": "/nix/store/h5r9901ms52cxfqvm4pb0d2y24ddc9vv-git-2.51.0-debug",
+        "doc": "/nix/store/0dp21kpx7d2xh0y29y79wwggrhgnjks5-git-2.51.0-doc",
+        "out": "/nix/store/1xrbd5mmc64lx3hwm07kq27f445rs4xh-git-2.51.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -213,29 +302,29 @@
     {
       "attr_path": "git",
       "broken": false,
-      "derivation": "/nix/store/b5a7flvc1aq2h7pfgr756p7wpyjydzv9-git-2.52.0.drv",
+      "derivation": "/nix/store/hnfy2a69xlpqw8d8na5fcf72q0ajmp5z-git-2.51.0.drv",
       "description": "Distributed version control system",
       "install_id": "git",
       "license": "GPL-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "git-2.52.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "git-2.51.0",
       "pname": "git",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T06:05:47.318442Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T03:00:55.696103Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2.52.0",
+      "version": "2.51.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "debug": "/nix/store/zd8di23fmzjwrhb5ij1bjnlfqkx9j7d6-git-2.52.0-debug",
-        "doc": "/nix/store/d8kc4kqzcrbcj92msxrpdsdjglh2q5gp-git-2.52.0-doc",
-        "out": "/nix/store/ipwndaag56mm8g8gn8j98z0jvn8x4mk1-git-2.52.0"
+        "debug": "/nix/store/n2qv18fvl3d4jn4y1828mk89zpl83840-git-2.51.0-debug",
+        "doc": "/nix/store/b7382m8mvzm3336f6lj8wdbqwsclc0yx-git-2.51.0-doc",
+        "out": "/nix/store/60440kg5c51rrlpinkk2rkg020q5q6kv-git-2.51.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -244,17 +333,17 @@
     {
       "attr_path": "jq",
       "broken": false,
-      "derivation": "/nix/store/44r4r3dsjbhqmddw2vvxn9jra5sl12cq-jq-1.8.1.drv",
+      "derivation": "/nix/store/x0hycn9knfcq79i5habjgyz5akx7m7nr-jq-1.8.1.drv",
       "description": "Lightweight and flexible command-line JSON processor",
       "install_id": "jq",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
       "name": "jq-1.8.1",
       "pname": "jq",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T04:36:10.345782Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:08:30.388549Z",
       "stabilities": [
         "unstable"
       ],
@@ -265,11 +354,11 @@
         "man"
       ],
       "outputs": {
-        "bin": "/nix/store/qjs0qndyz1g97rsc1zp4cd692y5iph64-jq-1.8.1-bin",
-        "dev": "/nix/store/bhryp10d5w5h9rsav5k9m9jb55z26bsl-jq-1.8.1-dev",
-        "doc": "/nix/store/238sn0gg3i3i9v6kgx4g1k6b19frzy49-jq-1.8.1-doc",
-        "man": "/nix/store/jlpyybc7pdh4gk17dc266d6a1szm7dk6-jq-1.8.1-man",
-        "out": "/nix/store/n64h0247s3674kry90l6kszx06zyrgfn-jq-1.8.1"
+        "bin": "/nix/store/vh3xibzhaz3nl5m97ka2i5sxivv59sgn-jq-1.8.1-bin",
+        "dev": "/nix/store/ni42jbsfngy5l81p2lz9v5wcl4kwl9nf-jq-1.8.1-dev",
+        "doc": "/nix/store/hy9hxygqscjkz0faz5xlxwkj7sn6v74i-jq-1.8.1-doc",
+        "man": "/nix/store/k9swya8a42jsa59jd2xcw0pvacj0xxyn-jq-1.8.1-man",
+        "out": "/nix/store/qabxprfzl0lygph7yg3kq6b8si410syd-jq-1.8.1"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -278,17 +367,17 @@
     {
       "attr_path": "jq",
       "broken": false,
-      "derivation": "/nix/store/gcqa6ab6iifng1rpfs5bb34nx9czg705-jq-1.8.1.drv",
+      "derivation": "/nix/store/f2yda9q3f7miq3md0r47d25cbbwqwacw-jq-1.8.1.drv",
       "description": "Lightweight and flexible command-line JSON processor",
       "install_id": "jq",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
       "name": "jq-1.8.1",
       "pname": "jq",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T05:05:43.049936Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:18:46.543569Z",
       "stabilities": [
         "unstable"
       ],
@@ -296,15 +385,14 @@
       "version": "1.8.1",
       "outputs_to_install": [
         "bin",
-        "bin",
         "man"
       ],
       "outputs": {
-        "bin": "/nix/store/c1qm5fsn6qbl09xdjx649vifabypyywd-jq-1.8.1-bin",
-        "dev": "/nix/store/2sy4y09ddbi64pbg4is078110z70jsdw-jq-1.8.1-dev",
-        "doc": "/nix/store/vx81xggapqwdd2l64mmxrkbafih461jc-jq-1.8.1-doc",
-        "man": "/nix/store/2pjwv0ab8nilrg1lvjazf9y9w6g6pk5y-jq-1.8.1-man",
-        "out": "/nix/store/cfhajjz1k7gf31krbj18q9acb54xp5z9-jq-1.8.1"
+        "bin": "/nix/store/pqr9gww8fksrllfr38k9jvl7k5q5awf7-jq-1.8.1-bin",
+        "dev": "/nix/store/qqcccyr96a1p4j7ywgzhqi06n5y47mk0-jq-1.8.1-dev",
+        "doc": "/nix/store/ankng0jgm40wkgwiz3n8rj6hanmgdsx7-jq-1.8.1-doc",
+        "man": "/nix/store/n0y7a3f5hmglwifndimclg99mpn554bl-jq-1.8.1-man",
+        "out": "/nix/store/6h1mv44dhnq2jb94373cab59yaq5y8wz-jq-1.8.1"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -313,17 +401,17 @@
     {
       "attr_path": "jq",
       "broken": false,
-      "derivation": "/nix/store/ni2zx8nd9ja3ar6ar568r8l4wy80knn2-jq-1.8.1.drv",
+      "derivation": "/nix/store/qk16np2i3ls20ih6n8lc38l6f3y6s7i3-jq-1.8.1.drv",
       "description": "Lightweight and flexible command-line JSON processor",
       "install_id": "jq",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
       "name": "jq-1.8.1",
       "pname": "jq",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T06:06:07.320364Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T03:01:16.369852Z",
       "stabilities": [
         "unstable"
       ],
@@ -331,15 +419,14 @@
       "version": "1.8.1",
       "outputs_to_install": [
         "bin",
-        "bin",
         "man"
       ],
       "outputs": {
-        "bin": "/nix/store/qnaw7i777j52fpgbl5pgmzkq85znp083-jq-1.8.1-bin",
-        "dev": "/nix/store/d73i1fvhrqms0sbfrvqaynsr8iva216v-jq-1.8.1-dev",
-        "doc": "/nix/store/3ynrp4ypwv1g1jgsk638443p8lpd9g8f-jq-1.8.1-doc",
-        "man": "/nix/store/6mh88qsh57ivh31c5nqxc43n0hv9xhbk-jq-1.8.1-man",
-        "out": "/nix/store/fgsvqffyvcpjqs093wwf2d6dzxnmnqnv-jq-1.8.1"
+        "bin": "/nix/store/frzsv47z1mcyrp941zab08mx6kardizi-jq-1.8.1-bin",
+        "dev": "/nix/store/caq8n6m9m5zyhf0by83ksbimqmpggkwr-jq-1.8.1-dev",
+        "doc": "/nix/store/n3wl5jkmnzfg0a1vjxxx8w2n7js1b5sr-jq-1.8.1-doc",
+        "man": "/nix/store/rs84gk428azdd7ca46ki3w60yqp54ksk-jq-1.8.1-man",
+        "out": "/nix/store/zsw99s8nv2qffdg47jf8x8pyml9b0x2r-jq-1.8.1"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -348,29 +435,29 @@
     {
       "attr_path": "nodejs_22",
       "broken": false,
-      "derivation": "/nix/store/lbf0cwx7gcpa51d50zla2db2np24s22g-nodejs-22.22.0.drv",
+      "derivation": "/nix/store/zwv4yyk5jkgsby5flqgnahh3lvlz3hk6-nodejs-22.20.0.drv",
       "description": "Event-driven I/O framework for the V8 JavaScript engine",
       "install_id": "nodejs_22",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "nodejs-22.22.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "nodejs-22.20.0",
       "pname": "nodejs_22",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T04:36:18.065291Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:08:38.000299Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "22.22.0",
+      "version": "22.20.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "dev": "/nix/store/pp6k9i2dpr8rimfl5dhrpm8y2384g8l3-nodejs-22.22.0-dev",
-        "libv8": "/nix/store/f5mnrbcj44qx8pb0xj9g71cb0ffxrmd0-nodejs-22.22.0-libv8",
-        "out": "/nix/store/zphm4748w514z6p9g073f673sjl338gm-nodejs-22.22.0"
+        "dev": "/nix/store/8ckn8ghxqbnd5z4c7ijsq7yps3ad1inj-nodejs-22.20.0-dev",
+        "libv8": "/nix/store/nxjx4dsqfc55mzk7is53f7qsb1lsqq4j-nodejs-22.20.0-libv8",
+        "out": "/nix/store/4whakvkkpcgbdzxl1y32vq7rb73k4faq-nodejs-22.20.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -379,29 +466,29 @@
     {
       "attr_path": "nodejs_22",
       "broken": false,
-      "derivation": "/nix/store/c8bjd03hs9mkgd49jmhn52vpgmp5cw1h-nodejs-22.22.0.drv",
+      "derivation": "/nix/store/4rx0flnp5k575882fhcs7ahpzjjgkbvr-nodejs-22.20.0.drv",
       "description": "Event-driven I/O framework for the V8 JavaScript engine",
       "install_id": "nodejs_22",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "nodejs-22.22.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "nodejs-22.20.0",
       "pname": "nodejs_22",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T05:05:58.853749Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:19:02.865572Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "22.22.0",
+      "version": "22.20.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "dev": "/nix/store/4m4b63ix1kljgcap8zhbpiy4xvg90n1r-nodejs-22.22.0-dev",
-        "libv8": "/nix/store/xl8f6lq0p5lf1dixhd9rhxzkvx4lzpzl-nodejs-22.22.0-libv8",
-        "out": "/nix/store/2hzivwi1fq7gyn42nxf1299ydza2qvqq-nodejs-22.22.0"
+        "dev": "/nix/store/0vkqirb963hm21wh13y3zd23dmlbfk61-nodejs-22.20.0-dev",
+        "libv8": "/nix/store/8dijv5z9djsjckbp86vbm0jykwscbj53-nodejs-22.20.0-libv8",
+        "out": "/nix/store/82qylyr9s3i07hwvab44cbi0w4dc74ix-nodejs-22.20.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -410,29 +497,119 @@
     {
       "attr_path": "nodejs_22",
       "broken": false,
-      "derivation": "/nix/store/lqnqpplg61xxa956d63gapgl94rmj9y4-nodejs-22.22.0.drv",
+      "derivation": "/nix/store/17l9a0z195ympiszhw3ah4piacgzhni2-nodejs-22.20.0.drv",
       "description": "Event-driven I/O framework for the V8 JavaScript engine",
       "install_id": "nodejs_22",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "nodejs-22.22.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "nodejs-22.20.0",
       "pname": "nodejs_22",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T06:06:25.440746Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T03:01:34.965021Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "22.22.0",
+      "version": "22.20.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "dev": "/nix/store/azkh9xkfaphcs7cj5l43rh4a92zjc510-nodejs-22.22.0-dev",
-        "libv8": "/nix/store/vzddff6gppvny62qsvr1sgqq629laz12-nodejs-22.22.0-libv8",
-        "out": "/nix/store/cv3yxgf7zp70wk8d8lg5zi84lg35nyxs-nodejs-22.22.0"
+        "dev": "/nix/store/x62pydw9kpd88m4986kyc02q8x3ipp3j-nodejs-22.20.0-dev",
+        "libv8": "/nix/store/hx91x0nj1h9jigh5sm08mvd4cas3aw48-nodejs-22.20.0-libv8",
+        "out": "/nix/store/nvf9kaarb9kqqdbygl9cbzhli1y8yjik-nodejs-22.20.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "poppler_utils",
+      "broken": false,
+      "derivation": "/nix/store/i0v7x5w1r13ba4sj354xbk71pasf4ks5-poppler-utils-25.07.0.drv",
+      "description": "PDF rendering library",
+      "install_id": "poppler_utils",
+      "license": "[ GPL-2.0-or-later ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "poppler-utils-25.07.0",
+      "pname": "poppler_utils",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:08:52.279520Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "25.07.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/sd1r33z9wwssbwkimqlfih6jkvg5ihv3-poppler-utils-25.07.0-dev",
+        "out": "/nix/store/1d9c58v4klvbz3d4p0g3lxcqrbqaikay-poppler-utils-25.07.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "poppler_utils",
+      "broken": false,
+      "derivation": "/nix/store/hmd9hkvh2rfp4r5s3qay7xldhq1nar59-poppler-utils-25.07.0.drv",
+      "description": "PDF rendering library",
+      "install_id": "poppler_utils",
+      "license": "[ GPL-2.0-or-later ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "poppler-utils-25.07.0",
+      "pname": "poppler_utils",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:19:23.923539Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "25.07.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/zqx4lr7gap668plpilwi9g6szn82akh1-poppler-utils-25.07.0-dev",
+        "out": "/nix/store/bmyknqhv3p4pq5g3klrlnxp2zr60gvaa-poppler-utils-25.07.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "poppler_utils",
+      "broken": false,
+      "derivation": "/nix/store/v6wrbkikd1580chhdwjsmwpqnqpdivj5-poppler-utils-25.07.0.drv",
+      "description": "PDF rendering library",
+      "install_id": "poppler_utils",
+      "license": "[ GPL-2.0-or-later ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "name": "poppler-utils-25.07.0",
+      "pname": "poppler_utils",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T03:01:56.815685Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "25.07.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/8k7wsrfszf92vw771z0jqrl4khk84xlc-poppler-utils-25.07.0-dev",
+        "out": "/nix/store/ir1vajffz7icwrji4fklhlbqxdd8bgjq-poppler-utils-25.07.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -441,17 +618,17 @@
     {
       "attr_path": "ripgrep",
       "broken": false,
-      "derivation": "/nix/store/6d56ayisz5870h6zlk2nlmlprxyy6p6a-ripgrep-15.1.0.drv",
+      "derivation": "/nix/store/7yij588iy23f0qb1nv2722z9xxr65dlv-ripgrep-15.1.0.drv",
       "description": "Utility that combines the usability of The Silver Searcher with the raw speed of grep",
       "install_id": "ripgrep",
       "license": "[ Unlicense, MIT ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
       "name": "ripgrep-15.1.0",
       "pname": "ripgrep",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T04:37:16.072901Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:09:39.073949Z",
       "stabilities": [
         "unstable"
       ],
@@ -461,7 +638,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/hz3dwqiwxw84mh82j1bnvxlca2ghmhkh-ripgrep-15.1.0"
+        "out": "/nix/store/jcwmx5x3ka5f7hpndgnlzjcp6qk51xn1-ripgrep-15.1.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -470,17 +647,17 @@
     {
       "attr_path": "ripgrep",
       "broken": false,
-      "derivation": "/nix/store/xi8zy5cj4zjgkjlh665gc3cvgwn39z01-ripgrep-15.1.0.drv",
+      "derivation": "/nix/store/m415rjh6kfxrh909f8x9641szmc9l6n5-ripgrep-15.1.0.drv",
       "description": "Utility that combines the usability of The Silver Searcher with the raw speed of grep",
       "install_id": "ripgrep",
       "license": "[ Unlicense, MIT ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
       "name": "ripgrep-15.1.0",
       "pname": "ripgrep",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T05:07:12.792151Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:20:27.702159Z",
       "stabilities": [
         "unstable"
       ],
@@ -490,7 +667,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/lg9npvx2ddljsd98a370x8di92kc9xbj-ripgrep-15.1.0"
+        "out": "/nix/store/gn32hnvx3mlr4r17rvcp4hawfbldid8w-ripgrep-15.1.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -499,17 +676,17 @@
     {
       "attr_path": "ripgrep",
       "broken": false,
-      "derivation": "/nix/store/y8m355ccwhrmsmzgvarirvwyw3dnvhy6-ripgrep-15.1.0.drv",
+      "derivation": "/nix/store/ywscvr90yfn96i4prk3mawl863kyink1-ripgrep-15.1.0.drv",
       "description": "Utility that combines the usability of The Silver Searcher with the raw speed of grep",
       "install_id": "ripgrep",
       "license": "[ Unlicense, MIT ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
       "name": "ripgrep-15.1.0",
       "pname": "ripgrep",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T06:07:42.957832Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T03:03:00.676832Z",
       "stabilities": [
         "unstable"
       ],
@@ -519,7 +696,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/5ij40vzd46x6psvdv5yg5gr6igrpwyd4-ripgrep-15.1.0"
+        "out": "/nix/store/3gn1hlciymm7yw3kvkvss2ixvczms3w6-ripgrep-15.1.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -528,17 +705,17 @@
     {
       "attr_path": "wget",
       "broken": false,
-      "derivation": "/nix/store/vvg9wxwm1f8ljlsq3q5qz904armpks05-wget-1.25.0.drv",
+      "derivation": "/nix/store/xfyr0vki4d7nmlxxijcmdm7dcjhwhd21-wget-1.25.0.drv",
       "description": "Tool for retrieving files using HTTP, HTTPS, and FTP",
       "install_id": "wget",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
       "name": "wget-1.25.0",
       "pname": "wget",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T04:38:24.961238Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:10:47.033969Z",
       "stabilities": [
         "unstable"
       ],
@@ -548,7 +725,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/y96k6q6s9r8v8bwr15pb7h2fnwcnm5lf-wget-1.25.0"
+        "out": "/nix/store/n69zv9l731dlf7xdwp8mcyhqsn72n8s8-wget-1.25.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -557,17 +734,17 @@
     {
       "attr_path": "wget",
       "broken": false,
-      "derivation": "/nix/store/dj30wp0503zksyywpyg3jkahjb06r3jm-wget-1.25.0.drv",
+      "derivation": "/nix/store/p65bma2p39nqjjv7w616pa86jcdxvg43-wget-1.25.0.drv",
       "description": "Tool for retrieving files using HTTP, HTTPS, and FTP",
       "install_id": "wget",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
       "name": "wget-1.25.0",
       "pname": "wget",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T05:08:41.255371Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T02:21:54.577753Z",
       "stabilities": [
         "unstable"
       ],
@@ -577,7 +754,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/piknlg0s8p99wjsl6q4677sq6ppsw88l-wget-1.25.0"
+        "out": "/nix/store/kk04x24ng5d2i9ax38k0mgwdrc1rpfn8-wget-1.25.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -586,28 +763,27 @@
     {
       "attr_path": "wget",
       "broken": false,
-      "derivation": "/nix/store/kqi2lv0m7vanpdsvkfvg4mbf7q8aadmy-wget-1.25.0.drv",
+      "derivation": "/nix/store/vkwyh8qfg7bgamlda3g60a18i0ln1d60-wget-1.25.0.drv",
       "description": "Tool for retrieving files using HTTP, HTTPS, and FTP",
       "install_id": "wget",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
       "name": "wget-1.25.0",
       "pname": "wget",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T06:09:14.615429Z",
+      "rev": "6a08e6bb4e46ff7fcbb53d409b253f6bad8a28ce",
+      "rev_count": 883951,
+      "rev_date": "2025-10-25T06:24:58Z",
+      "scrape_date": "2025-10-27T03:04:29.374559Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
       "version": "1.25.0",
       "outputs_to_install": [
-        "out",
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/km50zarkv22ymh8hiysqhrldi8ckzwdl-wget-1.25.0"
+        "out": "/nix/store/fjyrfs6zjvrgvif709ww5bginmzaman4-wget-1.25.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",

@@ -11,6 +11,7 @@ jq.pkg-path = "jq"
 ripgrep.pkg-path = "ripgrep"
 wget.pkg-path = "wget"
 bc.pkg-path = "bc"
+poppler_utils.pkg-path = "poppler_utils"
 
 ## Static Environment Variables --------------------------------------------
 [vars]

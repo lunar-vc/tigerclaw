@@ -79,6 +79,20 @@ else
   hint "Run: flox activate  (provides ripgrep)"
 fi
 
+if command -v pdftoppm >/dev/null 2>&1; then
+  pass "pdftoppm available ($(pdftoppm -v 2>&1 | head -1))"
+else
+  warn "pdftoppm not found (needed for pitch deck analysis)"
+  hint "Run: flox activate  (provides poppler_utils)"
+fi
+
+if command -v pdfinfo >/dev/null 2>&1; then
+  pass "pdfinfo available"
+else
+  warn "pdfinfo not found (needed for pitch deck analysis)"
+  hint "Run: flox activate  (provides poppler_utils)"
+fi
+
 # ── 2. API Keys ─────────────────────────────────────────────────────────────
 
 printf "\n${BOLD}API Keys (.env)${RESET}\n"
@@ -208,6 +222,20 @@ if [ -d "$SKILLS_DIR/.git" ]; then
   else
     fail "hookdeck skill missing"
     hint "Try: rm -rf $SKILLS_DIR && git clone https://github.com/lunar-vc/agent-skills.git $SKILLS_DIR"
+  fi
+
+  if [ -f "$SKILLS_DIR/pitch-deck-analysis/SKILL.md" ]; then
+    pass "pitch-deck-analysis skill present"
+  else
+    warn "pitch-deck-analysis skill missing"
+    hint "Try: cd $SKILLS_DIR && git pull"
+  fi
+
+  if [ -f "$SKILLS_DIR/academic-sourcing/scripts/trigger.js" ]; then
+    pass "academic-sourcing skill present"
+  else
+    warn "academic-sourcing skill missing"
+    hint "Try: cd $SKILLS_DIR && git pull"
   fi
 else
   fail "agent-skills repo not cloned"

@@ -247,6 +247,65 @@ tmux kill-session -t gemini_linkedin
 
 **When to use:** When WebFetch returns 403 or auth-wall errors for LinkedIn URLs. Use for founder background checks, team research, executive departure tracking, and company page analysis.
 
+### Academic Sourcing (`academic-sourcing`)
+
+Source, scrape, and search academic papers from arxiv for any research discipline. Runs a three-step pipeline via n8n:
+- **AS1**: Generate a taxonomy of labels and tags for a discipline
+- **AS2**: Harvest papers from arxiv matching the taxonomy
+- **AS3**: Analyze papers and create theme/deal issues in Linear (runs automatically after AS2)
+
+**Location:** `.claude/skills/agent-skills/academic-sourcing/`
+**Configuration:** `config.json` (in skill folder)
+
+**Usage:**
+```bash
+# AS1 — Generate taxonomy
+node .claude/skills/agent-skills/academic-sourcing/scripts/trigger.js 1 '{"Discipline Name": "Robotics"}'
+
+# AS2 — Harvest papers (use discipline_id from AS1 response)
+node .claude/skills/agent-skills/academic-sourcing/scripts/trigger.js 2 '{
+  "Discipline ID": "<discipline_id>",
+  "Max Papers Per Label": 3,
+  "Days back to search": 7
+}'
+```
+
+**Trigger phrases:** "Do academic sourcing for X", "Source papers in X", "Scrape papers for X", "Search papers in X"
+
+**Defaults:** 10 papers per label, 30 days back (when not specified — always confirm with user if only discipline is provided)
+
+**When to use:** When researching a discipline to find recent academic work, identify emerging themes, and discover potential founders from paper authors. After AS2, AS3 automatically creates Linear issues for themes and deals.
+
+### Pitch Deck Analysis (`pitch-deck-analysis`)
+
+Analyze pitch decks and investment memos for prepared mind briefings. Extracts investment themes, assesses market positioning, and produces Wardley value chain analysis.
+
+**Location:** `.claude/skills/agent-skills/pitch-deck-analysis/`
+**Requires:** `poppler` on PATH (`brew install poppler` — provides `pdftoppm` for Claude's native PDF page rendering)
+
+**Usage:**
+- "Analyze this pitch deck: /path/to/deck.pdf"
+- "Review this deck for [Company]: /path/to/deck.pdf"
+- "Prepare me for a call with [Company]: /path/to/deck.pdf"
+- "Analyze the deck from [sender]'s email" — retrieves PDF attachment via `gmail-monitor`
+
+**Input methods:**
+1. **Local file path** — most common
+2. **Email retrieval** — search Gmail for the email, download the PDF attachment via `gmail-monitor/scripts/download-attachment.js`, then analyze the downloaded file
+
+**Output:**
+1. Research memo saved to `research/YYYY-MM-DD-company-slug.md`
+2. **Linear Issue 1** in THE team (Triage) — full analysis, label "Pitch Deck Analysis"
+3. **Linear Issue 2** in THE team (Triage) — extracted theme, related to Issue 1, label "Pitch Deck Analysis"
+
+**Analysis covers:** Company snapshot, problem & market, solution & differentiation, team assessment, traction signals, Wardley value chain mapping, theme extraction, risk matrix, and prepared mind questions for the call.
+
+**Critical — PDF reading protocol:** Always determine total page count FIRST (via `pdfinfo` or probing), then read ALL pages in 20-page chunks. Verify coverage before proceeding to analysis. Never skip appendix/case-study pages.
+
+**Do NOT:** Upload PDFs to Linear (too large for MCP). Do NOT save to knowledge graph/Memory MCP.
+
+**Note:** The theme issue (Issue 2) can optionally be passed to the existing Theme & Thesis scoring pipeline (Morris Clay / n8n) for full 10-dimension scoring. This is a separate step not handled by this skill.
+
 ## Research Workflows
 
 ### 1. Company Deep Dive

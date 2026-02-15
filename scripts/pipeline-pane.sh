@@ -75,7 +75,7 @@ render() {
 
   # Unique themes
   local themes_covered
-  themes_covered=$(jq -r '[.people[].theme, .companies[].theme] | map(select(. != null)) | unique | length' "$PIPELINE_INDEX" 2>/dev/null || echo 0)
+  themes_covered=$(jq -r '[.people[].theme, .companies[].theme] | map(select(type == "string")) | unique | length' "$PIPELINE_INDEX" 2>/dev/null || echo 0)
 
   # Last update
   local updated_at

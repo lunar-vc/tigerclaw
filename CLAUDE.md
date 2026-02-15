@@ -397,7 +397,8 @@ Proactively find founders who may be starting something new.
 9. Save scan results to `research/YYYY-MM-DD-signal-scan.md`
 10. Create Linear issues in **DEAL** team (Triage) for each actionable signal (REACH_OUT, WATCH)
 11. **Run `persist-to-memory.js` for EVERY person with action REACH_OUT or WATCH** — not just the top signals, every watchlist candidate. The script handles dedup automatically. This is how we avoid losing track of people like Christine Lee across sessions.
-12. **Touch the theme done:** run `node scripts/touch-theme.js THE-XXXX` to stamp today's date and switch from "researching" to "today" in the pane.
+12. **Log scan summary to discoveries:** append a `summary` line to `.discoveries.jsonl` with the theme ID, result count, and breakdown: `{"status":"summary","name":"THE-XXXX","detail":"N watch · N pass","results":TOTAL,"time":"HH:MM"}`
+13. **Touch the theme done:** run `node scripts/touch-theme.js THE-XXXX` to stamp today's date and switch from "researching" to "today" in the pane.
 
 ### 5. Investment Theme Development
 
@@ -465,6 +466,7 @@ The discoveries pane (`scripts/discoveries-pane.sh`) watches `.discoveries.jsonl
 {"status":"found","name":"Dr. Sarah Chen","detail":"MIT — PhD defense","strength":"STRONG","time":"14:23"}
 {"status":"watching","name":"Wei Liu","detail":"ex-Google — new CV repo","time":"14:30"}
 {"status":"disqualified","name":"Dr. Jane Doe","detail":"Stanford — NLP","reason":"no venture intent","time":"14:25"}
+{"status":"summary","name":"THE-1811","detail":"7 watch · 5 pass","results":12,"time":"14:35"}
 ```
 
 **Statuses:**
@@ -472,13 +474,15 @@ The discoveries pane (`scripts/discoveries-pane.sh`) watches `.discoveries.jsonl
 - `found` — qualified, signal confirmed (REACH_OUT candidates)
 - `watching` — interesting but needs more data (WATCH candidates)
 - `disqualified` — ruled out, shown crossed-out at bottom (PASS candidates)
+- `summary` — scan complete banner with result count (appended when research finishes)
 
 **Fields:**
-- `status` (required): evaluating | found | watching | disqualified
-- `name` (required): person or company name
-- `detail` (required): affiliation + one-line summary
+- `status` (required): evaluating | found | watching | disqualified | summary
+- `name` (required): person or company name (theme ID for summary lines)
+- `detail` (required): affiliation + one-line summary (breakdown for summary lines)
 - `strength` (for found only): STRONG | MEDIUM | WEAK
 - `reason` (for disqualified only): why they were ruled out
+- `results` (for summary only): total number of results
 - `time` (required): HH:MM timestamp when discovered
 
 **How to write entries:**

@@ -178,7 +178,7 @@ sleep 1
 
 # ── Welcome popup on first attach ──────────────────────────────────────────
 "${TC_TMUX[@]}" set-hook -t "$TC_SESSION" client-attached \
-  "run-shell 'tmux -L ${TC_SOCKET} display-popup -w 60 -h 28 -E \"bash ${TC_HOME}/scripts/welcome-popup.sh\" ; tmux -L ${TC_SOCKET} set-hook -u -t ${TC_SESSION} client-attached'"
+  "run-shell 'tmux -L ${TC_SOCKET} display-popup -w 60 -h 32 -E \"TC_HOME=${TC_HOME} bash ${TC_HOME}/scripts/welcome-popup.sh\" ; tmux -L ${TC_SOCKET} set-hook -u -t ${TC_SESSION} client-attached'"
 
 # ── Attach ───────────────────────────────────────────────────────────────
 exec "${TC_TMUX[@]}" attach -t "$TC_SESSION"

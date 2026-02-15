@@ -16,6 +16,7 @@
 #   found        — qualified, signal confirmed
 #   watching     — interesting but needs more data
 #   disqualified — ruled out (shown crossed-out at bottom)
+#   summary      — scan complete line with result count
 #
 
 set -uo pipefail
@@ -48,11 +49,11 @@ render() {
   # Header
   local total=0 found=0 watching=0 disqualified=0 evaluating=0
   if [ -s "$TC_DISCOVERIES" ]; then
-    total=$(wc -l < "$TC_DISCOVERIES" | tr -d ' ')
     found=$(grep -c '"found"' "$TC_DISCOVERIES" 2>/dev/null || true)
     watching=$(grep -c '"watching"' "$TC_DISCOVERIES" 2>/dev/null || true)
     disqualified=$(grep -c '"disqualified"' "$TC_DISCOVERIES" 2>/dev/null || true)
     evaluating=$(grep -c '"evaluating"' "$TC_DISCOVERIES" 2>/dev/null || true)
+    total=$((found + watching + disqualified + evaluating))
   fi
 
   printf '\n'
@@ -73,17 +74,26 @@ render() {
     return
   fi
 
-  # Collect active entries (non-disqualified) — newest first
+  # Collect entries by type — newest first
   local active_lines=()
   local disqualified_lines=()
+  local summary_lines=()
 
   while IFS= read -r line; do
-    if echo "$line" | grep -q '"disqualified"'; then
+    if echo "$line" | grep -q '"summary"'; then
+      summary_lines+=("$line")
+    elif echo "$line" | grep -q '"disqualified"'; then
       disqualified_lines+=("$line")
     else
       active_lines+=("$line")
     fi
   done < "$TC_DISCOVERIES"
+
+  # Print summary lines first (scan completion banners)
+  for (( i=${#summary_lines[@]}-1; i>=0; i-- )); do
+    render_entry "${summary_lines[$i]}"
+  done
+  [ ${#summary_lines[@]} -gt 0 ] && printf "  ${GREY}────────────────────────────────────────────────${RESET}\n"
 
   # Print active entries (newest first = reverse order)
   for (( i=${#active_lines[@]}-1; i>=0; i-- )); do
@@ -139,6 +149,10 @@ render_entry() {
   local time_prefix=""
   [ -n "$time_str" ] && time_prefix="${GREY}${time_str}${RESET} "
 
+  # Parse optional "results" count for summary lines
+  local results
+  results=$(echo "$line" | sed -n 's/.*"results" *: *\([0-9]*\).*/\1/p')
+
   case "$status" in
     evaluating)
       printf "  ${time_prefix}${YELLOW}◌${RESET} ${DIM}evaluating${RESET} ${WHITE}%s${RESET}" "$name"
@@ -165,6 +179,12 @@ render_entry() {
     disqualified)
       printf "  ${time_prefix}${RED}✕${RESET} ${STRIKETHROUGH}${GREY}%s${RESET}" "$name"
       [ -n "$reason" ] && printf " ${DIM}— %s${RESET}" "$reason"
+      printf '\n'
+      ;;
+    summary)
+      printf "  ${time_prefix}${GREEN}✓${RESET} ${BOLD}%s${RESET} scan complete" "$name"
+      [ -n "$results" ] && printf " — ${WHITE}%s results${RESET}" "$results"
+      [ -n "$detail" ] && printf " ${DIM}(%s)${RESET}" "$detail"
       printf '\n'
       ;;
     *)

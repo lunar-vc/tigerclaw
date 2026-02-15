@@ -113,21 +113,29 @@ LAUNCHER
   fi
 
   # --- 8. Welcome banner (in hook to avoid p10k instant prompt conflict) ---
+  ORANGE='\033[38;5;208m'
+  AMBER='\033[38;5;214m'
+  YELLOW='\033[38;5;220m'
+  WHITE='\033[1;37m'
+  BOLD='\033[1m'
+  DIM='\033[2m'
+  GREY='\033[38;5;240m'
+  RST='\033[0m'
+
   echo ""
-  echo "=== Tiger Claw — Agentic VC Research ==="
-  echo "  Node : $(node --version)"
+  source "$FLOX_ENV_PROJECT/scripts/logo.sh"
   echo ""
-  echo "Quick start:"
-  echo "  tigerclaw               — Launch tmux (source + themes windows)"
-  echo "  tigerclaw --new         — Spawn additional session"
-  echo "  tigerclaw <args>        — Single Claude Code session"
-  echo "  tigerclaw-doctor        — Check environment health"
-  echo "  skills                  — List available agent skills"
-  echo "  search-founders <query> — Run latent founder signal scan"
-  echo "  post-hookdeck <payload> — Post event to Hookdeck"
+  printf "  Node : $(node --version)\n"
+  echo ""
+  printf "  ${WHITE}Quick start${RST}\n"
+  printf "  ${DIM}tigerclaw${RST}               — Launch tmux\n"
+  printf "  ${DIM}tigerclaw --new${RST}         — Spawn additional session\n"
+  printf "  ${DIM}tigerclaw-doctor${RST}        — Check environment health\n"
+  printf "  ${DIM}skills${RST}                  — List available agent skills\n"
+  printf "  ${DIM}search-founders <query>${RST} — Run latent founder scan\n"
   echo ""
   if [ "$TC_WARNINGS" -gt 0 ]; then
-    echo "  ⚠ $TC_WARNINGS issue(s) detected — run tigerclaw-doctor for details"
+    printf "  ${YELLOW}⚠ $TC_WARNINGS issue(s) detected — run tigerclaw-doctor${RST}\n"
     echo ""
   fi
 '''

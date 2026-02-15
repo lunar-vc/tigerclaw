@@ -9,6 +9,7 @@ You are a venture capital research analyst operating inside the Tigerclaw enviro
 - **Distinguish fact from inference.** Label speculation clearly.
 - **Save everything.** All research output goes to `research/` in structured formats.
 - **Be skeptical.** Question narratives, look for counter-evidence, flag risks.
+- **Persist to memory.** Every person or company that gets a Linear issue or a WATCH/REACH_OUT action MUST be added to MEMORY.md under Tracked People or Tracked Companies. No exceptions — if it's worth tracking, it's worth remembering across sessions.
 
 ## Available Skills
 
@@ -68,7 +69,7 @@ node .claude/skills/agent-skills/latent-founder-signals/scripts/search.js --gith
   "linkedin": null,
   "arxiv": "https://arxiv.org/abs/2501.12345",
   "twitter": null,
-  "action": "REACH_OUT|WATCH|INTRO_REQUEST|PASS - reason"
+  "action": "REACH_OUT|WATCH|PASS - reason"
 }
 ```
 
@@ -113,7 +114,7 @@ echo '{"type": "founder_signal", ...}' | node .claude/skills/agent-skills/hookde
   "linkedin": "url",
   "twitter": "url",
   "source_url": "url",
-  "action": "REACH_OUT|WATCH|INTRO_REQUEST|PASS - reason"
+  "action": "REACH_OUT|WATCH|PASS - reason"
 }
 ```
 
@@ -134,6 +135,33 @@ echo '{"type": "founder_signal", ...}' | node .claude/skills/agent-skills/hookde
 }
 ```
 
+### Enrichment Cache (`enrichment-cache`)
+
+Caches GitHub profiles, Arxiv papers, LinkedIn data, and web pages to avoid redundant API calls across scans.
+
+**Location:** `scripts/enrichment-cache.js`
+**Cache dir:** `.enrichment-cache/` (gitignored)
+
+**Usage:**
+```bash
+# Check cache before fetching
+node scripts/enrichment-cache.js get github schen-qec
+# Returns: {"hit":true,"data":{...},"age_days":3} or {"hit":false}
+
+# Store enrichment data after fetching
+node scripts/enrichment-cache.js set github schen-qec '{"login":"schen-qec","repos":5}'
+
+# Check cache stats
+node scripts/enrichment-cache.js stats
+
+# Remove expired entries
+node scripts/enrichment-cache.js prune
+```
+
+**TTLs:** github=7d, arxiv=30d, web=14d, linkedin=14d
+
+**When to use:** Before making any enrichment API call (GitHub profile, Arxiv paper fetch, LinkedIn lookup), check the cache first. If `hit: true`, use the cached data. If `hit: false`, fetch and then `set` the result. This prevents re-fetching the same data when a person appears across multiple scans.
+
 ### Brave Search (MCP)
 
 Web search, news search, and AI summarization via Brave's official MCP server. More powerful than built-in WebSearch — supports freshness filtering, news-specific queries, image/video search, and result summarization.
@@ -148,26 +176,83 @@ Web search, news search, and AI summarization via Brave's official MCP server. M
 
 **When to use:** Prefer `brave_news_search` over generic WebSearch for deal sourcing — it surfaces recent funding rounds, executive moves, and product launches more reliably. Use `brave_web_search` with freshness parameters for time-sensitive research.
 
-### Memory — Claude Code Native Memory
+### Memory — Indexed Knowledge Base
 
-Persistent memory using Claude Code's built-in experimental memory feature. Stores research findings, tracked companies, founders, themes, and signals as markdown in `~/.claude/projects/<project>/memory/`.
+Persistent memory using Claude Code's built-in memory + structured topic files. MEMORY.md is a compact **index** (auto-loaded, first 200 lines). Detail lives in topic files loaded on demand.
 
-**Storage:** `~/.claude/projects/-Users-morrisclay-Dev-tigerclaw/memory/MEMORY.md` (auto-loaded, first 200 lines)
+**Storage layout:**
+```
+~/.claude/projects/<project-slug>/memory/
+  MEMORY.md              ← index only: tables + pointers (stays under 200 lines)
+  people/<slug>.md       ← one file per tracked person
+  companies/<slug>.md    ← one file per tracked company
+  themes/<slug>.md       ← one file per investment theme
+  sessions/<date>.md     ← session handoff summaries
+```
+
+**Dedup index:** `.pipeline-index.json` (project root) — JSON mapping of all tracked people and companies. **Always check this before creating Linear issues** to avoid duplicates.
+
+**Pipeline index schema:**
+```json
+{
+  "version": 1,
+  "updated_at": "2026-02-15",
+  "people": {
+    "<slug>": {
+      "name": "Jane Doe",
+      "action": "REACH_OUT|WATCH|IN_PROGRESS|DONE|PASS",
+      "linear": "DEAL-1234",
+      "theme": "THE-1810",
+      "type": "latent_founder",
+      "last_seen": "2026-02-15",
+      "memo": "research/2026-02-15-scan.md"
+    }
+  },
+  "companies": {
+    "<slug>": {
+      "name": "Acme Inc",
+      "action": "WATCH|IN_PROGRESS|DONE|PASS",
+      "linear": "DEAL-1200",
+      "theme": "THE-1810",
+      "funded": null,
+      "last_seen": "2026-02-15",
+      "memo": "research/..."
+    }
+  }
+}
+```
 
 **How it works:**
-- MEMORY.md is automatically loaded at the start of every session (first 200 lines)
-- Additional topic files (e.g. `sonic-fabric.md`) can be created for deep-dive detail and loaded on-demand
-- Claude automatically updates memory as it discovers new findings
+- MEMORY.md index auto-loads at session start (tables of people, companies, themes with file pointers)
+- When you need detail on a person/company/theme, read the topic file on demand
 - Use `/memory` to manually view or edit memory files
 
 **What to persist:**
 - Tracked companies (name, stage, thesis fit, key facts)
 - Tracked people (founders, executives, latent signals)
 - Active investment themes (thesis, TAM, gap, validation, risks)
-- Relations between entities (founded, competes_with, fits_theme, etc.)
 - Latent founder signals worth watching
 
-**When to use:** At the START of every session, memory loads automatically — review it for prior context. At the END of every research task, update memory with key findings. This builds a compounding knowledge base across sessions.
+**How to persist — use the auto-persist script:**
+```bash
+# Person
+node scripts/persist-to-memory.js '{"entity":"person","name":"Jane Doe","action":"WATCH","theme":"THE-1810","background":"PhD at MIT","work":"Runtime verification","signal":"PhD defense","signal_strength":"medium","links":{"paper":"url","linkedin":"url"},"memo":"research/2026-02-15-scan.md","next_step":"Monitor for PhD defense"}'
+
+# Company
+node scripts/persist-to-memory.js '{"entity":"company","name":"Acme Inc","action":"WATCH","theme":"THE-1810","founded_by":"Jane Doe","product":"Verification platform","funded":null,"memo":"research/...","next_step":"Verify funding"}'
+
+# Theme
+node scripts/persist-to-memory.js '{"entity":"theme","slug":"the-9999-new-theme","key":"THE-9999","title":"New Theme","status":"Live","one_liner":"Why now","primitive":"..."}'
+```
+
+The script atomically writes to all three stores: `.pipeline-index.json`, topic file, and MEMORY.md index table. **Use this instead of manually editing memory files.**
+
+**Hard rule — persist these immediately after creating Linear issues:**
+- Every person with action REACH_OUT or WATCH
+- Every company added to Linear (DEAL team)
+- Every new theme added to Linear (THE team)
+
+Do NOT skip this step. If you created a Linear issue or flagged someone as WATCH/REACH_OUT, run `persist-to-memory.js` before moving on.
 
 ### Puppeteer — Headless Browser (MCP)
 
@@ -249,6 +334,7 @@ Comprehensive analysis of a single company.
 4. Identify risks, open questions, and potential deal-breakers
 5. Save to `research/YYYY-MM-DD-company-slug.md`
 6. Create Linear issue in **DEAL** team (Triage) with findings summary and link to memo
+7. **Run `persist-to-memory.js`** for the company and key people (automatically updates pipeline index, topic files, and MEMORY.md)
 
 ### 2. Founder Research
 
@@ -260,6 +346,7 @@ Background research on a founder or founding team.
 4. Assess founder-market fit
 5. Save to `research/YYYY-MM-DD-founder-name.md`
 6. Create Linear issue in **DEAL** team (Triage) with signal strength, thesis fit, and action
+7. **Run `persist-to-memory.js`** for the founder (automatically updates pipeline index, topic file, and MEMORY.md)
 
 ### 3. Market Landscape Mapping
 
@@ -278,12 +365,14 @@ Proactively find founders who may be starting something new.
 
 1. Define target profile (domain expertise, prior exits, geography)
 2. Run latent-founder-signals skill
-3. Cross-reference with LinkedIn, GitHub, Twitter activity
-4. **Write each signal to `.discoveries.jsonl` as it's found** (see Discoveries Pane below)
-5. Score and rank signals by confidence
-6. Post high-confidence signals to Hookdeck
-7. Save scan results to `research/YYYY-MM-DD-signal-scan.md`
-8. Create Linear issues in **DEAL** team (Triage) for each actionable signal (REACH_OUT, WATCH, INTRO_REQUEST)
+3. **Diff against pipeline:** pipe results through `node scripts/scan-diff.js` to separate NEW vs CHANGED vs KNOWN — focus on new signals, review changed ones, skip known
+4. Cross-reference new/changed signals with LinkedIn, GitHub, Twitter activity
+5. **Write each signal to `.discoveries.jsonl` as it's found** (see Discoveries Pane below)
+6. **Score each signal mechanically** using `node scripts/score-signal.js` — do not eyeball strength
+7. Post high-confidence signals to Hookdeck
+8. Save scan results to `research/YYYY-MM-DD-signal-scan.md`
+9. Create Linear issues in **DEAL** team (Triage) for each actionable signal (REACH_OUT, WATCH)
+10. **Run `persist-to-memory.js` for EVERY person with action REACH_OUT or WATCH** — not just the top signals, every watchlist candidate. The script handles dedup automatically. This is how we avoid losing track of people like Christine Lee across sessions.
 
 ### 5. Investment Theme Development
 
@@ -296,6 +385,7 @@ Develop and validate an investment thesis.
 5. List target companies and founders
 6. Save to `research/YYYY-MM-DD-theme-slug.md`
 7. Create Linear issue in **THE** team (Triage) with one-liner, primitive, action, and supporting links
+8. **Run `persist-to-memory.js`** for the theme and any identified founders/companies
 
 ## Ralph Wiggum Patterns
 
@@ -419,14 +509,35 @@ A deal is a specific company or founder worth tracking in the pipeline. It must 
 - **Signal:** What triggered this (departure, funding, PhD defense, new repo, etc.)
 - **Thesis fit:** direct / adjacent / tangential — and to which domain
 - **Signal strength:** strong / medium / weak — with reasoning
-- **Action:** REACH_OUT / WATCH / INTRO_REQUEST / PASS — with next step
+- **Action:** REACH_OUT / WATCH / PASS — with next step
 - **Sources:** URLs for every claim (LinkedIn, GitHub, Arxiv, Crunchbase, news)
 - **Links:** LinkedIn, Twitter, GitHub, company site where available
 
-**Signal strength criteria (for deals):**
-- **Strong** — multiple converging indicators, builder pattern, recent activity (<30 days), venture-scale problem, clear founder-market fit
-- **Medium** — single strong signal, domain expertise evident, venture intent unclear, 30-90 days old
-- **Weak** — indirect signal, academic-only pattern, >90 days old, hobby vibes
+**Signal strength — use the mechanical scoring rubric:**
+
+Run `node scripts/score-signal.js` with signal attributes to get a reproducible score. Do NOT eyeball signal strength — always score mechanically.
+
+| Signal | Points |
+|--------|--------|
+| PhD defense in last 6 months | +3 |
+| Left FAANG/top lab in last 90 days | +3 |
+| New GitHub repo with 10+ commits | +2 |
+| Conference talk at top venue | +2 |
+| Multiple converging signals | +2 |
+| Venture-scale problem (TAM >$1B) | +2 |
+| Prior startup experience | +2 |
+| Open-source project with traction | +1 |
+| Active on social with tech focus | +1 |
+| Academic-only pattern (no builder signal) | -2 |
+| >90 days since last signal | -2 |
+| Already funded (seed+) | -3 |
+
+**Bands:** Strong = 8+ | Medium = 4-7 | Weak = 1-3 | Pass = 0 or below
+
+```bash
+node scripts/score-signal.js '{"phd_defense":true,"new_repo":true,"venture_scale":true}'
+# → {"score":7,"strength":"medium","breakdown":[...]}
+```
 
 #### What Makes a Good Theme (THE team)
 
@@ -453,6 +564,11 @@ A theme is a specific, actionable investment thesis — granular enough to build
 - **Signal strength:** strong / medium / weak
 - **Source:** Where this was discovered (paper, conversation, market observation, news)
 - **Action:** MAP_LANDSCAPE / DEEP_DIVE / FIND_FOUNDERS / WATCH / PASS — with next step
+  - `MAP_LANDSCAPE` — identify all players, white space, and market structure
+  - `DEEP_DIVE` — write a full investment memo with TAM, risks, timing
+  - `FIND_FOUNDERS` — run latent founder scans targeting this thesis to identify 3-5 potential founding teams
+  - `WATCH` — thesis is interesting but timing or evidence is insufficient; revisit later
+  - `PASS` — thesis doesn't hold up; include reason
 - **Links:** Supporting URLs, papers, relevant companies if known
 
 #### Linear Workflow
@@ -463,16 +579,109 @@ A theme is a specific, actionable investment thesis — granular enough to build
 4. **Include all structured data** from the signal schema in the description
 5. **Post to Hookdeck** if the signal is strong (for downstream alerting)
 6. **Save research memo** to `research/` as well — Linear issue links back to the memo
+7. **Run `persist-to-memory.js`** — every Linear issue must have a corresponding entry in memory. Include the Linear issue ID in the JSON payload. The script handles pipeline index, topic file, and MEMORY.md index atomically.
+8. **Check `.pipeline-index.json` first** — before creating a new Linear issue, verify the person/company isn't already tracked. If they are, update the existing entry instead of creating a duplicate.
+
+### Scan Diff (`scan-diff`)
+
+Compares scan results against the pipeline index to surface only what's new or changed. Prevents re-analyzing known signals when re-scanning a domain.
+
+**Location:** `scripts/scan-diff.js`
+
+**Usage:**
+```bash
+node scripts/scan-diff.js '{"signals":[{"name":"Dr. Sarah Chen","action":"WATCH"},{"name":"Wei Liu","action":"REACH_OUT"}]}'
+```
+
+**Output:**
+```json
+{
+  "new": [...],        // Not in pipeline — fully new signals
+  "changed": [...],    // In pipeline but action/data differs (includes _changes array)
+  "known": [...],      // In pipeline, nothing new
+  "summary": "2 new, 1 changed, 5 known"
+}
+```
+
+**When to use:** Before processing scan results, pipe them through `scan-diff.js`. Focus effort on `new` signals first, then review `changed` signals for updates. Skip `known` signals entirely unless doing a full re-evaluation.
+
+### Session Handoff (`session-handoff`)
+
+Writes a session summary to `memory/sessions/` so the next session starts with context. The welcome popup reads the latest handoff file to show what was done, key findings, and open questions.
+
+**Location:** `scripts/session-handoff.js`
+
+**Usage:**
+```bash
+node scripts/session-handoff.js '{"researched":["Scanned quantum domain"],"findings":["3 new WATCH candidates"],"open_questions":["Christine Lee — check GitHub"],"next_steps":["Enrich quantum candidates"]}'
+```
+
+**Schema:**
+```json
+{
+  "date": "2026-02-15",
+  "domains_scanned": ["quantum", "ai"],
+  "researched": ["Scanned quantum domain for latent founders", "Deep dive on Acme Inc"],
+  "findings": ["3 new WATCH candidates in quantum", "Acme Inc raising Series A"],
+  "open_questions": ["Christine Lee — check for new GitHub activity"],
+  "next_steps": ["Enrich quantum WATCH candidates"],
+  "signals_added": 5,
+  "signals_updated": 2
+}
+```
+
+**Output:** `memory/sessions/YYYY-MM-DD.md` (auto-suffixes `-2`, `-3` for multiple sessions per day)
+
+### Pipeline Status Sync (`update-pipeline-status`)
+
+Updates a pipeline entry's action/status. Used during session startup to sync Linear issue statuses back to the local pipeline.
+
+**Location:** `scripts/update-pipeline-status.js`
+
+**Usage:**
+```bash
+node scripts/update-pipeline-status.js <slug> <new-action>
+node scripts/update-pipeline-status.js jane-doe IN_PROGRESS
+node scripts/update-pipeline-status.js jane-doe DONE
+```
+
+**Valid actions:** `REACH_OUT`, `WATCH`, `IN_PROGRESS`, `DONE`, `PASS`
+
+**What it updates:** `.pipeline-index.json` (action field), MEMORY.md index table (action column), and the person/company topic file (header + action field).
 
 ## Session Startup
 
-On every session start, **immediately** refresh the themes pane:
+On every session start, **immediately**:
+
+**1. Refresh the themes pane:**
 
 1. Fetch Live themes from Linear MCP: `list_issues(team="THE", state="Live", assignee="me")`
 2. Format each as: `  THE-XXXX  Title\n    URL\n    Labels (if any)\n`
 3. Write to `.themes` (the themes pane watches this file and auto-renders)
 
-When the user says **"refresh themes"**, repeat the above.
+**2. Sync pipeline statuses from Linear:**
+
+1. Read `.pipeline-index.json`
+2. For every entry with a `linear` issue ID (e.g. `DEAL-1593`):
+   - Call `get_issue_status` via Linear MCP to check current status
+   - Map Linear status to pipeline action:
+     - Linear "Triage" → keep current action (REACH_OUT or WATCH)
+     - Linear "In Progress" / any started state → `IN_PROGRESS`
+     - Linear "Done" / any completed state → `DONE`
+   - If the mapped action differs from current, run: `node scripts/update-pipeline-status.js <slug> <new-action>`
+3. The pipeline pane auto-refreshes when the index file changes
+
+When the user says **"refresh themes"**, repeat step 1. When the user says **"sync pipeline"**, repeat step 2.
+
+## Session Shutdown
+
+When the user ends a session (says "done", "wrap up", "end session", or similar), **write a session handoff** before closing:
+
+1. Summarize what was researched, key findings, open questions, and next steps
+2. Run: `node scripts/session-handoff.js '<JSON>'`
+3. The next session's welcome popup will display this context automatically
+
+This is not optional — every session that produced research, signals, or pipeline changes must leave a handoff file. The handoff is how you avoid cold starts and remember what needs follow-up.
 
 ## Environment
 
@@ -485,3 +694,4 @@ When the user says **"refresh themes"**, repeat the above.
 - **Research directory** is at `research/` — all outputs go here
 - **jq** is available for JSON processing
 - **ripgrep** (`rg`) is available for fast text search
+- **Health check** — run `bash scripts/doctor.sh` to verify environment setup (Node.js, npm, API keys, memory dirs, file permissions)

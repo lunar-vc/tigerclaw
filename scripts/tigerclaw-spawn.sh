@@ -28,22 +28,26 @@ TC_DISCOVERIES="$TC_HOME/.discoveries-${N}.jsonl"
 "${TC_TMUX[@]}" set-environment -t "$TC_SESSION" TC_HOME "$TC_HOME"
 "${TC_TMUX[@]}" set-environment -t "$TC_SESSION" TC_SOCKET "$TC_SOCKET"
 
-# Same layout: discovered (top-left), claude (bottom), themes (top-right)
-"${TC_TMUX[@]}" split-window -t "${TC_WIN}.1" -v -l '65%' -c "$TC_HOME"
-"${TC_TMUX[@]}" split-window -t "${TC_WIN}.1" -h -c "$TC_HOME" \
+# Same 2×2 layout: leads+pipeline (left), themes+source (right)
+# .1=leads (top-left), .2=themes (top-right), .3=pipeline (bottom-left), .4=source (bottom-right)
+"${TC_TMUX[@]}" split-window -t "${TC_WIN}.1" -h -l '55%' -c "$TC_HOME" \
   "'${TC_HOME}/scripts/themes-pane.sh'"
+"${TC_TMUX[@]}" split-window -t "${TC_WIN}.1" -v -l '50%' -c "$TC_HOME" \
+  "TC_HOME='${TC_HOME}' '${TC_HOME}/scripts/pipeline-pane.sh'"
+"${TC_TMUX[@]}" split-window -t "${TC_WIN}.2" -v -l '60%' -c "$TC_HOME"
 
-"${TC_TMUX[@]}" select-pane -t "${TC_WIN}.1" -T "DISCOVERED"
-"${TC_TMUX[@]}" select-pane -t "${TC_WIN}.2" -T "SOURCE"
-"${TC_TMUX[@]}" select-pane -t "${TC_WIN}.3" -T "THEMES"
+"${TC_TMUX[@]}" select-pane -t "${TC_WIN}.1" -T "FOUNDER LEADS"
+"${TC_TMUX[@]}" select-pane -t "${TC_WIN}.2" -T "THEMES"
+"${TC_TMUX[@]}" select-pane -t "${TC_WIN}.3" -T "PIPELINE"
+"${TC_TMUX[@]}" select-pane -t "${TC_WIN}.4" -T "SOURCE"
 
-# Launch discovery feed (pointing to this session's log)
+# Launch founder leads feed (pointing to this session's log)
 "${TC_TMUX[@]}" send-keys -t "${TC_WIN}.1" "TC_DISCOVERIES='${TC_DISCOVERIES}' '${TC_HOME}/scripts/discoveries-pane.sh'" Enter
 
-# Launch claude
-"${TC_TMUX[@]}" send-keys -t "${TC_WIN}.2" 'claude --dangerously-skip-permissions' Enter
+# Launch claude in bottom-right
+"${TC_TMUX[@]}" send-keys -t "${TC_WIN}.4" 'claude --dangerously-skip-permissions' Enter
 
-"${TC_TMUX[@]}" select-pane -t "${TC_WIN}.2"
+"${TC_TMUX[@]}" select-pane -t "${TC_WIN}.4"
 
 # Bind keys for this session too
 "${TC_TMUX[@]}" bind-key -T prefix ? display-popup -w 55 -h 24 -E \

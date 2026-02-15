@@ -6,10 +6,11 @@
 #   tigerclaw              Launch tmux with all panes on one screen
 #   tigerclaw <args>       Pass through to claude directly
 #
-# Layout (single window, three panes):
-#   top-left   — discovered: Live founder feed
-#   top-right  — themes: Live themes from Linear (auto-refresh)
-#   bottom     — source: Claude Code (agentic sourcing)
+# Layout (single window, 2×2 grid):
+#   top-left     — founder leads: Live founder feed
+#   top-right    — themes: Active investment themes from Linear
+#   bottom-left  — pipeline: Pipeline status dashboard
+#   bottom-right — source: Claude Code (agentic sourcing)
 #
 # Isolation:
 #   Runs on its own tmux socket (-L tigerclaw) so it never conflicts
@@ -66,19 +67,24 @@ printf '  \033[38;5;208m╱\033[38;5;214m╱\033[38;5;220m╱\033[0m        \033
 printf '   \033[38;5;208m╱\033[38;5;214m╱\033[38;5;220m╱\033[0m       \033[2mAgentic VC Research\033[0m\n'
 printf '    \033[38;5;208m╱\033[38;5;214m╱\033[38;5;220m╱\033[0m      \033[2mLaunching tmux session...\033[0m\n'
 printf '\n'
-printf '  \033[38;5;214mdiscovered\033[0m — Live founder feed (top-left)\n'
-printf '  \033[38;5;214mthemes\033[0m     — Live themes from Linear (top-right)\n'
-printf '  \033[38;5;214msource\033[0m     — Claude Code (bottom)\n'
+printf '  \033[38;5;214mfounder leads\033[0m — Live founder feed (top-left)\n'
+printf '  \033[38;5;214mthemes\033[0m        — Active investment themes (top-right)\n'
+printf '  \033[38;5;214mpipeline\033[0m      — Pipeline status dashboard (bottom-left)\n'
+printf '  \033[38;5;214msource\033[0m        — Claude Code (bottom-right)\n'
 printf '\n'
 
-# ── Create tmux session — single window, three panes ─────────────────────
+# ── Create tmux session — single window, four panes (2×2 grid) ───────────
 #
-#   ┌──────────────┬──────────────┐
-#   │  discovered   │   themes     │
-#   │  (live feed)  │  (Linear)    │
-#   ├──────────────┴──────────────┤
-#   │   source — Claude Code      │
-#   └─────────────────────────────┘
+#   ┌──────────────────────┬────────────────────────┐
+#   │ FOUNDER LEADS        │ THEMES                 │
+#   │  (discoveries feed)  │  (Linear themes)       │
+#   ├──────────────────────┼────────────────────────┤
+#   │ PIPELINE             │ SOURCE                 │
+#   │  (status dashboard)  │  (Claude Code)         │
+#   └──────────────────────┴────────────────────────┘
+#
+#   Left column  = Leads + Pipeline  (deal tracking)
+#   Right column = Themes + Source   (research/thesis)
 
 "${TC_TMUX[@]}" -f "$TC_HOME/scripts/tmux.conf" \
   new-session -d -s "$TC_SESSION" -n tigerclaw -c "$TC_HOME"
@@ -89,25 +95,31 @@ TC_WIN="${TC_SESSION}:tigerclaw"
 "${TC_TMUX[@]}" set-environment -t "$TC_SESSION" TC_HOME "$TC_HOME"
 "${TC_TMUX[@]}" set-environment -t "$TC_SESSION" TC_SOCKET "$TC_SOCKET"
 
-# Capture the initial pane ID (will become top-left: discovered feed)
+# Capture the initial pane ID (will become top-left: founder leads)
 PANE_DISCOVERED=$("${TC_TMUX[@]}" list-panes -t "${TC_WIN}" -F '#{pane_id}')
 
-# Split vertically: top (discovered) + bottom (source: Claude Code, gets 65%)
-PANE_SOURCE=$("${TC_TMUX[@]}" split-window -t "$PANE_DISCOVERED" -v -l '65%' -c "$TC_HOME" -P -F '#{pane_id}')
-
-# Split the top pane horizontally: left (discovered) | right (themes)
-PANE_THEMES=$("${TC_TMUX[@]}" split-window -t "$PANE_DISCOVERED" -h -c "$TC_HOME" -P -F '#{pane_id}' \
+# Split right: top-left (leads) | top-right (themes, gets 55% for source width)
+PANE_THEMES=$("${TC_TMUX[@]}" split-window -t "$PANE_DISCOVERED" -h -l '55%' -c "$TC_HOME" -P -F '#{pane_id}' \
   "'${TC_HOME}/scripts/themes-pane.sh'")
 
+# Split top-left down: leads (top) | pipeline (bottom, 50%)
+PANE_PIPELINE=$("${TC_TMUX[@]}" split-window -t "$PANE_DISCOVERED" -v -l '50%' -c "$TC_HOME" -P -F '#{pane_id}' \
+  "TC_HOME='${TC_HOME}' '${TC_HOME}/scripts/pipeline-pane.sh'")
+
+# Split top-right down: themes (top) | source (bottom, 60% for Claude Code)
+PANE_SOURCE=$("${TC_TMUX[@]}" split-window -t "$PANE_THEMES" -v -l '60%' -c "$TC_HOME" -P -F '#{pane_id}')
+
 # ── Set pane titles ────────────────────────────────────────────────────────
-"${TC_TMUX[@]}" select-pane -t "$PANE_DISCOVERED" -T "DISCOVERED"
-"${TC_TMUX[@]}" select-pane -t "$PANE_SOURCE" -T "SOURCE"
+"${TC_TMUX[@]}" select-pane -t "$PANE_DISCOVERED" -T "FOUNDER LEADS"
+"${TC_TMUX[@]}" select-pane -t "$PANE_PIPELINE" -T "PIPELINE"
 "${TC_TMUX[@]}" select-pane -t "$PANE_THEMES" -T "THEMES"
+"${TC_TMUX[@]}" select-pane -t "$PANE_SOURCE" -T "SOURCE"
 
 # Store pane IDs in tmux environment for external scripts
 "${TC_TMUX[@]}" set-environment -t "$TC_SESSION" PANE_DISCOVERED "$PANE_DISCOVERED"
 "${TC_TMUX[@]}" set-environment -t "$TC_SESSION" PANE_SOURCE "$PANE_SOURCE"
 "${TC_TMUX[@]}" set-environment -t "$TC_SESSION" PANE_THEMES "$PANE_THEMES"
+"${TC_TMUX[@]}" set-environment -t "$TC_SESSION" PANE_PIPELINE "$PANE_PIPELINE"
 
 # ── Launch processes in panes ──────────────────────────────────────────────
 # Give shells time to initialize before sending keystrokes
@@ -116,12 +128,12 @@ sleep 1
 # Top-left: discovery feed renderer
 "${TC_TMUX[@]}" send-keys -t "$PANE_DISCOVERED" "'${TC_HOME}/scripts/discoveries-pane.sh'" Enter
 
-# Bottom: Claude Code
+# Bottom-right: Claude Code
 "${TC_TMUX[@]}" send-keys -t "$PANE_SOURCE" 'claude --dangerously-skip-permissions' Enter
 
-# Top-right: already launched via split-window command
+# Themes + Pipeline: already launched via split-window commands
 
-# Select the source pane (bottom) as active
+# Select the source pane (bottom-right) as active
 "${TC_TMUX[@]}" select-pane -t "$PANE_SOURCE"
 
 # ── Path-dependent keybindings ─────────────────────────────────────────────
@@ -137,12 +149,14 @@ sleep 1
   source-file "$TC_HOME/scripts/tmux.conf" \; display "Config reloaded"
 
 # ── Right-click context menu ───────────────────────────────────────────────
+# Pane indices (creation order): .1=leads, .2=themes, .3=pipeline, .4=source
 "${TC_TMUX[@]}" bind-key -n MouseDown3Pane display-menu -T "#[fg=colour214,bold] tigerclaw " -x M -y M \
-  "Refresh Themes"     t "send-keys -t ${PANE_SOURCE} 'refresh themes' Enter" \
+  "Refresh Themes"     t "send-keys -t .4 'refresh themes' Enter" \
   "" \
-  "Focus Source"       s "select-pane -t ${PANE_SOURCE}" \
-  "Focus Discovered"   d "select-pane -t ${PANE_DISCOVERED}" \
-  "Focus Themes"       h "select-pane -t ${PANE_THEMES}" \
+  "Focus Source"       s "select-pane -t .4" \
+  "Focus Founder Leads" d "select-pane -t .1" \
+  "Focus Themes"       h "select-pane -t .2" \
+  "Focus Pipeline"     p "select-pane -t .3" \
   "" \
   "Scratch Shell"      / "display-popup -w 70% -h 60% -E 'bash'" \
   "Help"               ? "display-popup -w 55 -h 24 -E 'bash ${TC_HOME}/scripts/help-popup.sh'" \

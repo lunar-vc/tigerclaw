@@ -39,8 +39,11 @@ RESET='\033[0m'
 # Ensure the file exists
 touch "$TC_DISCOVERIES"
 
+SKIPPED_LINES=0
+
 render() {
   clear
+  SKIPPED_LINES=0
 
   # Header
   local total=0 found=0 watching=0 disqualified=0 evaluating=0
@@ -53,7 +56,7 @@ render() {
   fi
 
   printf '\n'
-  printf "  ${ORANGE}${BOLD}Discovered${RESET}  "
+  printf "  ${ORANGE}${BOLD}Founder Leads${RESET}  "
   if [ "$total" -gt 0 ]; then
     printf "${DIM}%s found${RESET}" "$found"
     [ "$watching" -gt 0 ] && printf "${DIM} · %s watching${RESET}" "$watching"
@@ -95,10 +98,32 @@ render() {
       render_entry "${disqualified_lines[$i]}"
     done
   fi
+
+  # Show skipped count if any malformed lines were found
+  if [ "$SKIPPED_LINES" -gt 0 ]; then
+    printf '\n'
+    printf "  ${RED}%d malformed line(s) skipped${RESET}\n" "$SKIPPED_LINES"
+  fi
+}
+
+validate_json_line() {
+  # Basic validation: must start with { and end with }, and contain "status" and "name"
+  local line="$1"
+  [[ "$line" =~ ^\{ ]] || return 1
+  [[ "$line" =~ \}$ ]] || return 1
+  echo "$line" | grep -q '"status"' || return 1
+  echo "$line" | grep -q '"name"' || return 1
+  return 0
 }
 
 render_entry() {
   local line="$1"
+
+  # Validate before parsing — skip malformed lines silently
+  if ! validate_json_line "$line"; then
+    SKIPPED_LINES=$((SKIPPED_LINES + 1))
+    return
+  fi
 
   # Parse JSON fields with lightweight extraction (no jq dependency in pane)
   local status name detail strength reason time_str
@@ -148,27 +173,37 @@ render_entry() {
   esac
 }
 
-# ── Initial render ───────────────────────────────────────────────────────
-render
+# ── Main run loop ────────────────────────────────────────────────────────
+run() {
+  # Initial render
+  render
 
-# ── Watch for file changes ───────────────────────────────────────────────
-if command -v fswatch &>/dev/null; then
-  fswatch -o "$TC_DISCOVERIES" 2>/dev/null | while read -r _; do
-    sleep 0.15
-    render
-  done
-else
-  last_mtime=""
-  while true; do
-    sleep 2
-    if [ -f "$TC_DISCOVERIES" ]; then
-      current_mtime=$(stat -f '%m' "$TC_DISCOVERIES" 2>/dev/null || stat -c '%Y' "$TC_DISCOVERIES" 2>/dev/null || echo "0")
-    else
-      current_mtime="0"
-    fi
-    if [ "$current_mtime" != "$last_mtime" ]; then
-      last_mtime="$current_mtime"
+  # Watch for file changes
+  if command -v fswatch &>/dev/null; then
+    fswatch -o "$TC_DISCOVERIES" 2>/dev/null | while read -r _; do
+      sleep 0.15
       render
-    fi
-  done
-fi
+    done
+  else
+    local last_mtime=""
+    while true; do
+      sleep 2
+      if [ -f "$TC_DISCOVERIES" ]; then
+        local current_mtime
+        current_mtime=$(stat -f '%m' "$TC_DISCOVERIES" 2>/dev/null || stat -c '%Y' "$TC_DISCOVERIES" 2>/dev/null || echo "0")
+      else
+        local current_mtime="0"
+      fi
+      if [ "$current_mtime" != "$last_mtime" ]; then
+        last_mtime="$current_mtime"
+        render
+      fi
+    done
+  fi
+}
+
+# ── Restart loop for crash recovery ──────────────────────────────────────
+while true; do
+  run 2>/dev/null || true
+  sleep 2
+done

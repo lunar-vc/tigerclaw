@@ -16,6 +16,12 @@ node_modules/
 # Legacy memory directory (replaced by Claude Code native memory)
 .memory/
 
+# Pipeline dedup index (local state, rebuilt from memory)
+.pipeline-index.json
+
+# Enrichment cache (local, rebuilt by fetching)
+.enrichment-cache/
+
 # Session-scoped discovery feed
 .discoveries
 .discoveries.jsonl

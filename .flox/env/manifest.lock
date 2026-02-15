@@ -9,6 +9,9 @@
       "curl": {
         "pkg-path": "curl"
       },
+      "fswatch": {
+        "pkg-path": "fswatch"
+      },
       "git": {
         "pkg-path": "git"
       },
@@ -243,6 +246,96 @@
         "devdoc": "/nix/store/74hjnnn67f1ax4mkx4nwbcxaih6k5hrv-curl-8.17.0-devdoc",
         "man": "/nix/store/msaigk8gy4rikyxbxiqksh8njd5dx13h-curl-8.17.0-man",
         "out": "/nix/store/8ylzjm58ghiq60vklfy58j14sgryjjzw-curl-8.17.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "fswatch",
+      "broken": false,
+      "derivation": "/nix/store/irxrav25yykr3l1qldcg59rhfwvd67km-fswatch-1.18.3.drv",
+      "description": "Cross-platform file change monitor with multiple backends",
+      "install_id": "fswatch",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "fswatch-1.18.3",
+      "pname": "fswatch",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T04:35:55.387662Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.18.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/ffnls25azx2q0h6n8y03r6paiz1l3kmz-fswatch-1.18.3"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "fswatch",
+      "broken": false,
+      "derivation": "/nix/store/iivxi37mmkjwkws0kcxk2gzrmrcblnwf-fswatch-1.18.3.drv",
+      "description": "Cross-platform file change monitor with multiple backends",
+      "install_id": "fswatch",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "fswatch-1.18.3",
+      "pname": "fswatch",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T05:05:24.124042Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.18.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/1bfmhk0l6d1n96967g57c06qcvp9qvc0-fswatch-1.18.3"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "fswatch",
+      "broken": false,
+      "derivation": "/nix/store/akldas6sj7lqr8vwp6zfm3w8zvy103x7-fswatch-1.18.3.drv",
+      "description": "Cross-platform file change monitor with multiple backends",
+      "install_id": "fswatch",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "fswatch-1.18.3",
+      "pname": "fswatch",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T06:05:47.108224Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.18.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/qkvz41s6p3rjbc7mxp7xlnrzw7smsq9s-fswatch-1.18.3"
       },
       "system": "x86_64-linux",
       "group": "toplevel",

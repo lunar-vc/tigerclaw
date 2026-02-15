@@ -12,7 +12,7 @@
 
 set -uo pipefail
 
-TC_HOME="${TIGERCLAW_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+TC_HOME="${TC_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 THEMES_FILE="$TC_HOME/.themes"
 
 # Colors
@@ -108,29 +108,38 @@ render() {
   printf "  ${DIM}Updated %s · Ask Claude: \"refresh themes\"${RESET}\n" "$mtime"
 }
 
-# ── Initial render ───────────────────────────────────────────────────────
-render
+# ── Main run loop ────────────────────────────────────────────────────────
+run() {
+  # Initial render
+  render
 
-# ── Watch for file changes ───────────────────────────────────────────────
-# Use fswatch if available (macOS), fall back to polling
-if command -v fswatch &>/dev/null; then
-  fswatch -o "$THEMES_FILE" 2>/dev/null | while read -r _; do
-    sleep 0.2  # debounce
-    render
-  done
-else
-  # Poll fallback — check mtime every 5s
-  last_mtime=""
-  while true; do
-    sleep 5
-    if [ -f "$THEMES_FILE" ]; then
-      current_mtime=$(stat -f '%m' "$THEMES_FILE" 2>/dev/null || stat -c '%Y' "$THEMES_FILE" 2>/dev/null || echo "0")
-    else
-      current_mtime="0"
-    fi
-    if [ "$current_mtime" != "$last_mtime" ]; then
-      last_mtime="$current_mtime"
+  # Watch for file changes — use fswatch if available (macOS), fall back to polling
+  if command -v fswatch &>/dev/null; then
+    fswatch -o "$THEMES_FILE" 2>/dev/null | while read -r _; do
+      sleep 0.2  # debounce
       render
-    fi
-  done
-fi
+    done
+  else
+    # Poll fallback — check mtime every 5s
+    local last_mtime=""
+    while true; do
+      sleep 5
+      if [ -f "$THEMES_FILE" ]; then
+        local current_mtime
+        current_mtime=$(stat -f '%m' "$THEMES_FILE" 2>/dev/null || stat -c '%Y' "$THEMES_FILE" 2>/dev/null || echo "0")
+      else
+        local current_mtime="0"
+      fi
+      if [ "$current_mtime" != "$last_mtime" ]; then
+        last_mtime="$current_mtime"
+        render
+      fi
+    done
+  fi
+}
+
+# ── Restart loop for crash recovery ──────────────────────────────────────
+while true; do
+  run 2>/dev/null || true
+  sleep 2
+done

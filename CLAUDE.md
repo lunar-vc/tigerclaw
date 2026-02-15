@@ -256,20 +256,26 @@ Do NOT skip this step. If you created a Linear issue or flagged someone as WATCH
 
 ### Touch Theme (`touch-theme`)
 
-Updates the `last_researched` date on a theme's memory file. Call this after any scan, deep dive, or research workflow that touches a theme — it's how the themes pane shows "3d ago" vs "never researched".
+Updates the research status on a theme. Updates BOTH the memory topic file AND the `.themes` pane file so the themes pane reflects changes immediately.
 
 **Location:** `scripts/touch-theme.js`
 
 **Usage:**
 ```bash
-# Set to today (default)
+# Mark as "researching" (shows green "● researching" in pane) — do this FIRST
+node scripts/touch-theme.js THE-2132 researching
+
+# Set to today (default) — do this when DONE researching
 node scripts/touch-theme.js THE-2132
 
 # Set to specific date
 node scripts/touch-theme.js THE-2132 2026-02-15
 ```
 
-**When to use:** After any research workflow that involves a theme — latent founder scans, market maps, deep dives, or theme development. The themes pane reads this date and shows relative age. If you forget to touch, the theme shows "never researched" which is misleading.
+**When to use:**
+- **START of research:** `touch-theme.js THE-XXXX researching` — immediately when you begin any research workflow on a theme (scan, deep dive, market map, theme development). This turns the theme green in the pane so the user knows it's active.
+- **END of research:** `touch-theme.js THE-XXXX` — when the workflow completes. This stamps today's date and the pane shows "today" in green.
+- If you forget to touch, the theme shows "never researched" which is misleading.
 
 ### Puppeteer — Headless Browser (MCP)
 
@@ -380,31 +386,33 @@ Map a market or sector for investment thesis development.
 
 Proactively find founders who may be starting something new.
 
-1. Define target profile (domain expertise, prior exits, geography)
-2. Run latent-founder-signals skill
-3. **Diff against pipeline:** pipe results through `node scripts/scan-diff.js` to separate NEW vs CHANGED vs KNOWN — focus on new signals, review changed ones, skip known
-4. Cross-reference new/changed signals with LinkedIn, GitHub, Twitter activity
-5. **Write each signal to `.discoveries.jsonl` as it's found** (see Discoveries Pane below)
-6. **Score each signal mechanically** using `node scripts/score-signal.js` — do not eyeball strength
-7. Post high-confidence signals to Hookdeck
-8. Save scan results to `research/YYYY-MM-DD-signal-scan.md`
-9. Create Linear issues in **DEAL** team (Triage) for each actionable signal (REACH_OUT, WATCH)
-10. **Run `persist-to-memory.js` for EVERY person with action REACH_OUT or WATCH** — not just the top signals, every watchlist candidate. The script handles dedup automatically. This is how we avoid losing track of people like Christine Lee across sessions.
-11. **Touch the theme:** if this scan targeted a specific theme, run `node scripts/touch-theme.js THE-XXXX` to update the "last researched" date in the themes pane.
+1. **Mark theme as researching:** if targeting a specific theme, run `node scripts/touch-theme.js THE-XXXX researching` FIRST — this turns the theme green in the pane immediately
+2. Define target profile (domain expertise, prior exits, geography)
+3. Run latent-founder-signals skill
+4. **Diff against pipeline:** pipe results through `node scripts/scan-diff.js` to separate NEW vs CHANGED vs KNOWN — focus on new signals, review changed ones, skip known
+5. Cross-reference new/changed signals with LinkedIn, GitHub, Twitter activity
+6. **Write each signal to `.discoveries.jsonl` as it's found** (see Discoveries Pane below)
+7. **Score each signal mechanically** using `node scripts/score-signal.js` — do not eyeball strength
+8. Post high-confidence signals to Hookdeck
+9. Save scan results to `research/YYYY-MM-DD-signal-scan.md`
+10. Create Linear issues in **DEAL** team (Triage) for each actionable signal (REACH_OUT, WATCH)
+11. **Run `persist-to-memory.js` for EVERY person with action REACH_OUT or WATCH** — not just the top signals, every watchlist candidate. The script handles dedup automatically. This is how we avoid losing track of people like Christine Lee across sessions.
+12. **Touch the theme done:** run `node scripts/touch-theme.js THE-XXXX` to stamp today's date and switch from "researching" to "today" in the pane.
 
 ### 5. Investment Theme Development
 
 Develop and validate an investment thesis.
 
-1. Define the theme hypothesis
-2. Map the market landscape (workflow 3)
-3. Identify tailwinds (regulatory, technical, market)
-4. Find proof points and counter-evidence
-5. List target companies and founders
-6. Save to `research/YYYY-MM-DD-theme-slug.md`
-7. Create Linear issue in **THE** team (Triage) with one-liner, primitive, action, and supporting links
-8. **Run `persist-to-memory.js`** for the theme and any identified founders/companies
-9. **Touch the theme:** run `node scripts/touch-theme.js THE-XXXX` to update the "last researched" date
+1. **Mark theme as researching:** run `node scripts/touch-theme.js THE-XXXX researching` FIRST
+2. Define the theme hypothesis
+3. Map the market landscape (workflow 3)
+4. Identify tailwinds (regulatory, technical, market)
+5. Find proof points and counter-evidence
+6. List target companies and founders
+7. Save to `research/YYYY-MM-DD-theme-slug.md`
+8. Create Linear issue in **THE** team (Triage) with one-liner, primitive, action, and supporting links
+9. **Run `persist-to-memory.js`** for the theme and any identified founders/companies
+10. **Touch the theme done:** run `node scripts/touch-theme.js THE-XXXX` to stamp today's date
 
 ## Ralph Wiggum Patterns
 

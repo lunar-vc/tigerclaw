@@ -155,7 +155,9 @@ render() {
     rel=$(relative_date "$rdate")
 
     printf '    '
-    if [ "$rel" = "never" ]; then
+    if [ "$rdate" = "researching" ]; then
+      printf "${GREEN}● researching${RESET}"
+    elif [ "$rel" = "never" ]; then
       printf "${DIM}never researched${RESET}"
     elif [ "$rel" = "today" ] || [ "$rel" = "yesterday" ]; then
       printf "${GREEN}%s${RESET}" "$rel"

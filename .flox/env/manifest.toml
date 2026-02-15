@@ -11,6 +11,8 @@ jq.pkg-path = "jq"
 ripgrep.pkg-path = "ripgrep"
 wget.pkg-path = "wget"
 bc.pkg-path = "bc"
+tmux.pkg-path = "tmux"
+fswatch.pkg-path = "fswatch"
 
 ## Static Environment Variables --------------------------------------------
 [vars]
@@ -86,14 +88,9 @@ on-activate = '''
 
   # --- 5. Create tigerclaw launcher in env bin ----------------------------
   mkdir -p "$FLOX_ENV_CACHE/bin"
-  cat > "$FLOX_ENV_CACHE/bin/tigerclaw" << 'LAUNCHER'
+  cat > "$FLOX_ENV_CACHE/bin/tigerclaw" << LAUNCHER
 #!/usr/bin/env bash
-printf '\n'
-printf '  \033[38;5;208m╱\033[38;5;214m╱\033[38;5;220m╱\033[0m        \033[1;37mTiger Claw\033[0m\n'
-printf '   \033[38;5;208m╱\033[38;5;214m╱\033[38;5;220m╱\033[0m       \033[2mAgentic VC Research\033[0m\n'
-printf '    \033[38;5;208m╱\033[38;5;214m╱\033[38;5;220m╱\033[0m      \033[2m%s\033[0m\n' "$(pwd)"
-printf '\n'
-exec claude "$@"
+exec bash "$FLOX_ENV_PROJECT/scripts/tigerclaw-launch.sh" "\$@"
 LAUNCHER
   chmod +x "$FLOX_ENV_CACHE/bin/tigerclaw"
   export PATH="$FLOX_ENV_CACHE/bin:$PATH"
@@ -121,7 +118,8 @@ LAUNCHER
   echo "  Node : $(node --version)"
   echo ""
   echo "Quick start:"
-  echo "  tigerclaw               — Launch Tiger Claw"
+  echo "  tigerclaw               — Launch tmux (source + themes windows)"
+  echo "  tigerclaw <args>        — Single Claude Code session"
   echo "  tigerclaw-doctor        — Check environment health"
   echo "  skills                  — List available agent skills"
   echo "  search-founders <query> — Run latent founder signal scan"
@@ -141,6 +139,7 @@ common = '''
   alias search-founders="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/latent-founder-signals/scripts/search.js"
   alias post-hookdeck="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/hookdeck/scripts/post.js"
   alias tigerclaw-doctor="bash $FLOX_ENV_PROJECT/scripts/doctor.sh"
+  log-discovery() { printf "[$(date +%H:%M)] %s\n" "$*" >> "$FLOX_ENV_PROJECT/.discoveries"; }
 '''
 
 ## Options -----------------------------------------------------------------

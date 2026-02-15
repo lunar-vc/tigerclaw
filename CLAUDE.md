@@ -148,36 +148,26 @@ Web search, news search, and AI summarization via Brave's official MCP server. M
 
 **When to use:** Prefer `brave_news_search` over generic WebSearch for deal sourcing — it surfaces recent funding rounds, executive moves, and product launches more reliably. Use `brave_web_search` with freshness parameters for time-sensitive research.
 
-### Memory — Persistent Knowledge Graph (MCP)
+### Memory — Claude Code Native Memory
 
-A local knowledge graph that persists across Claude Code sessions. Stores entities (people, companies, funds, themes), relationships between them, and observations (facts) attached to each entity.
+Persistent memory using Claude Code's built-in experimental memory feature. Stores research findings, tracked companies, founders, themes, and signals as markdown in `~/.claude/projects/<project>/memory/`.
 
-**Storage:** `.memory/vc-research.jsonl` (local file, gitignored)
+**Storage:** `~/.claude/projects/-Users-morrisclay-Dev-tigerclaw/memory/MEMORY.md` (auto-loaded, first 200 lines)
 
-**Tools available:**
-- `create_entities` — add people, companies, funds, themes to the graph
-- `create_relations` — connect entities (e.g. "Sequoia invested_in Stripe", "Sarah Chen founded Lattice Optics")
-- `add_observations` — attach facts to entities (e.g. "ARR $5M as of Q4 2025", "PhD MIT 2024")
-- `search_nodes` — query by name, type, or observation content
-- `open_nodes` — fetch specific entities with all their relations and observations
-- `read_graph` — retrieve the entire knowledge graph
-- `delete_entities`, `delete_observations`, `delete_relations` — prune the graph
+**How it works:**
+- MEMORY.md is automatically loaded at the start of every session (first 200 lines)
+- Additional topic files (e.g. `sonic-fabric.md`) can be created for deep-dive detail and loaded on-demand
+- Claude automatically updates memory as it discovers new findings
+- Use `/memory` to manually view or edit memory files
 
-**Entity types to use:**
-- `person` — founders, investors, executives
-- `company` — startups, incumbents, acquirers
-- `fund` — VC firms, angels, CVCs
-- `theme` — investment theses
-- `market` — sectors, verticals
-- `signal` — tracked signals pending triage
+**What to persist:**
+- Tracked companies (name, stage, thesis fit, key facts)
+- Tracked people (founders, executives, latent signals)
+- Active investment themes (thesis, TAM, gap, validation, risks)
+- Relations between entities (founded, competes_with, fits_theme, etc.)
+- Latent founder signals worth watching
 
-**Relation conventions (active voice):**
-- `founded`, `co_founded`, `works_at`, `left`
-- `invested_in`, `led_round_for`, `board_member_of`
-- `competes_with`, `acquired`, `partners_with`
-- `fits_theme`, `adjacent_to`
-
-**When to use:** At the START of every session, `read_graph` or `search_nodes` to recall prior context. At the END of every research task, persist key findings as entities/relations/observations. This builds a compounding knowledge base across sessions — the more you use it, the more useful it becomes.
+**When to use:** At the START of every session, memory loads automatically — review it for prior context. At the END of every research task, update memory with key findings. This builds a compounding knowledge base across sessions.
 
 ### Puppeteer — Headless Browser (MCP)
 
@@ -289,10 +279,11 @@ Proactively find founders who may be starting something new.
 1. Define target profile (domain expertise, prior exits, geography)
 2. Run latent-founder-signals skill
 3. Cross-reference with LinkedIn, GitHub, Twitter activity
-4. Score and rank signals by confidence
-5. Post high-confidence signals to Hookdeck
-6. Save scan results to `research/YYYY-MM-DD-signal-scan.md`
-7. Create Linear issues in **DEAL** team (Triage) for each actionable signal (REACH_OUT, WATCH, INTRO_REQUEST)
+4. **Write each signal to `.discoveries.jsonl` as it's found** (see Discoveries Pane below)
+5. Score and rank signals by confidence
+6. Post high-confidence signals to Hookdeck
+7. Save scan results to `research/YYYY-MM-DD-signal-scan.md`
+8. Create Linear issues in **DEAL** team (Triage) for each actionable signal (REACH_OUT, WATCH, INTRO_REQUEST)
 
 ### 5. Investment Theme Development
 
@@ -344,6 +335,43 @@ Save to `research/YYYY-MM-DD-slug.md` with this structure:
 - [Source 1](url)
 - [Source 2](url)
 ```
+
+### Discoveries Pane (Real-Time Feed)
+
+The discoveries pane (`scripts/discoveries-pane.sh`) watches `.discoveries.jsonl` and renders a live, colorized feed. **You MUST write to this file as signals are found during any latent founder scan or research workflow** — this is how the user sees progress in real time.
+
+**CRITICAL:** Append to `.discoveries.jsonl` **as each signal is identified**, not at the end of a scan. Use `evaluating` status while assessing, then update to `found`, `watching`, or `disqualified`.
+
+**JSONL format** (one entry per line, append-only):
+```json
+{"status":"evaluating","name":"Dr. Sarah Chen","detail":"MIT CSAIL — quantum error correction","time":"14:23"}
+{"status":"found","name":"Dr. Sarah Chen","detail":"MIT — PhD defense","strength":"STRONG","time":"14:23"}
+{"status":"watching","name":"Wei Liu","detail":"ex-Google — new CV repo","time":"14:30"}
+{"status":"disqualified","name":"Dr. Jane Doe","detail":"Stanford — NLP","reason":"no venture intent","time":"14:25"}
+```
+
+**Statuses:**
+- `evaluating` — currently being assessed (animated spinner in pane)
+- `found` — qualified, signal confirmed (REACH_OUT candidates)
+- `watching` — interesting but needs more data (WATCH candidates)
+- `disqualified` — ruled out, shown crossed-out at bottom (PASS candidates)
+
+**Fields:**
+- `status` (required): evaluating | found | watching | disqualified
+- `name` (required): person or company name
+- `detail` (required): affiliation + one-line summary
+- `strength` (for found only): STRONG | MEDIUM | WEAK
+- `reason` (for disqualified only): why they were ruled out
+- `time` (required): HH:MM timestamp when discovered
+
+**How to write entries:**
+```bash
+echo '{"status":"found","name":"Jane Doe","detail":"MIT — novel PI defense","strength":"STRONG","time":"14:23"}' >> .discoveries.jsonl
+```
+
+Or use the Write tool to append. The pane auto-refreshes via fswatch (or 2s polling fallback).
+
+**When to clear:** Start each new scan session by truncating the file: `> .discoveries.jsonl`
 
 ### Signal Payloads (Hookdeck)
 
@@ -436,14 +464,24 @@ A theme is a specific, actionable investment thesis — granular enough to build
 5. **Post to Hookdeck** if the signal is strong (for downstream alerting)
 6. **Save research memo** to `research/` as well — Linear issue links back to the memo
 
+## Session Startup
+
+On every session start, **immediately** refresh the themes pane:
+
+1. Fetch Live themes from Linear MCP: `list_issues(team="THE", state="Live", assignee="me")`
+2. Format each as: `  THE-XXXX  Title\n    URL\n    Labels (if any)\n`
+3. Write to `.themes` (the themes pane watches this file and auto-renders)
+
+When the user says **"refresh themes"**, repeat the above.
+
 ## Environment
 
 - **Node.js** is available for running skills
 - **Brave Search MCP** — `brave_web_search`, `brave_news_search`, `brave_summarizer` (requires `BRAVE_API_KEY`)
-- **Memory MCP** — persistent knowledge graph at `.memory/vc-research.jsonl` — use it every session
+- **Memory** — Claude Code native memory at `~/.claude/projects/<project>/memory/MEMORY.md` — auto-loaded every session
 - **Puppeteer MCP** — headless Chrome for JS-rendered pages and screenshots
 - **Linear MCP** — project/issue management (authenticate with `/mcp`)
-- **Chrome/Puppeteer** is configured for headless browsing (check `PUPPETEER_EXECUTABLE_PATH`)
+- **Themes pane** — watches `.themes` file, populated by Claude via Linear MCP on session start
 - **Research directory** is at `research/` — all outputs go here
 - **jq** is available for JSON processing
 - **ripgrep** (`rg`) is available for fast text search

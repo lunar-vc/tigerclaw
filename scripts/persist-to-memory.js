@@ -184,6 +184,7 @@ function renderThemeFile(s) {
   if (s.status) lines.push(`- **Status:** ${s.status}`);
   if (s.one_liner) lines.push(`- **One-liner:** ${s.one_liner}`);
   if (s.primitive) lines.push(`- **Primitive:** ${s.primitive}`);
+  lines.push(`- **Last researched:** ${s.last_researched || today()}`);
   if (s.memo) lines.push(`- **Memo:** ${s.memo}`);
   lines.push('');
   return lines.join('\n');

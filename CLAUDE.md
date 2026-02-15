@@ -254,6 +254,23 @@ The script atomically writes to all three stores: `.pipeline-index.json`, topic 
 
 Do NOT skip this step. If you created a Linear issue or flagged someone as WATCH/REACH_OUT, run `persist-to-memory.js` before moving on.
 
+### Touch Theme (`touch-theme`)
+
+Updates the `last_researched` date on a theme's memory file. Call this after any scan, deep dive, or research workflow that touches a theme — it's how the themes pane shows "3d ago" vs "never researched".
+
+**Location:** `scripts/touch-theme.js`
+
+**Usage:**
+```bash
+# Set to today (default)
+node scripts/touch-theme.js THE-2132
+
+# Set to specific date
+node scripts/touch-theme.js THE-2132 2026-02-15
+```
+
+**When to use:** After any research workflow that involves a theme — latent founder scans, market maps, deep dives, or theme development. The themes pane reads this date and shows relative age. If you forget to touch, the theme shows "never researched" which is misleading.
+
 ### Puppeteer — Headless Browser (MCP)
 
 Direct browser automation for scraping pages that require JavaScript rendering, navigating login-protected portals, or capturing screenshots.
@@ -373,6 +390,7 @@ Proactively find founders who may be starting something new.
 8. Save scan results to `research/YYYY-MM-DD-signal-scan.md`
 9. Create Linear issues in **DEAL** team (Triage) for each actionable signal (REACH_OUT, WATCH)
 10. **Run `persist-to-memory.js` for EVERY person with action REACH_OUT or WATCH** — not just the top signals, every watchlist candidate. The script handles dedup automatically. This is how we avoid losing track of people like Christine Lee across sessions.
+11. **Touch the theme:** if this scan targeted a specific theme, run `node scripts/touch-theme.js THE-XXXX` to update the "last researched" date in the themes pane.
 
 ### 5. Investment Theme Development
 
@@ -386,6 +404,7 @@ Develop and validate an investment thesis.
 6. Save to `research/YYYY-MM-DD-theme-slug.md`
 7. Create Linear issue in **THE** team (Triage) with one-liner, primitive, action, and supporting links
 8. **Run `persist-to-memory.js`** for the theme and any identified founders/companies
+9. **Touch the theme:** run `node scripts/touch-theme.js THE-XXXX` to update the "last researched" date
 
 ## Ralph Wiggum Patterns
 
@@ -651,15 +670,23 @@ node scripts/update-pipeline-status.js jane-doe DONE
 
 ## Session Startup
 
-On every session start, **immediately**:
+On every session start, **immediately launch both startup tasks in the background** using the Task tool with `run_in_background: true`. This lets you greet the user and start taking requests while the panes populate. Do NOT block on these — fire and forget.
 
-**1. Refresh the themes pane:**
+**1. Refresh the themes pane (background):**
 
 1. Fetch Live themes from Linear MCP: `list_issues(team="THE", state="Live", assignee="me")`
-2. Format each as: `  THE-XXXX  Title\n    URL\n    Labels (if any)\n`
-3. Write to `.themes` (the themes pane watches this file and auto-renders)
+2. For each theme, check the memory topic file (`memory/themes/<slug>.md`) for a `Last researched:` date
+3. Format each as:
+   ```
+     THE-XXXX  Title
+       https://linear.app/tigerslug/issue/THE-XXXX
+       researched: YYYY-MM-DD
+       Labels (if any)
+   ```
+   Omit the `researched:` line if no date is found in the memory file.
+4. Write to `.themes` (the themes pane watches this file and auto-renders — theme keys are clickable links to Linear, research age is shown per theme)
 
-**2. Sync pipeline statuses from Linear:**
+**2. Sync pipeline statuses from Linear (background):**
 
 1. Read `.pipeline-index.json`
 2. For every entry with a `linear` issue ID (e.g. `DEAL-1593`):
@@ -671,7 +698,9 @@ On every session start, **immediately**:
    - If the mapped action differs from current, run: `node scripts/update-pipeline-status.js <slug> <new-action>`
 3. The pipeline pane auto-refreshes when the index file changes
 
-When the user says **"refresh themes"**, repeat step 1. When the user says **"sync pipeline"**, repeat step 2.
+Both tasks run concurrently in background agents. The user sees the panes update live as data arrives. You are free to respond to user requests immediately — do not wait for these to finish.
+
+When the user says **"refresh themes"**, repeat step 1 (foreground is fine). When the user says **"sync pipeline"**, repeat step 2 (foreground is fine).
 
 ## Session Shutdown
 

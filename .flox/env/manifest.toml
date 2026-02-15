@@ -119,6 +119,7 @@ LAUNCHER
   echo ""
   echo "Quick start:"
   echo "  tigerclaw               — Launch tmux (source + themes windows)"
+  echo "  tigerclaw --new         — Spawn additional session"
   echo "  tigerclaw <args>        — Single Claude Code session"
   echo "  tigerclaw-doctor        — Check environment health"
   echo "  skills                  — List available agent skills"
@@ -139,6 +140,7 @@ common = '''
   alias search-founders="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/latent-founder-signals/scripts/search.js"
   alias post-hookdeck="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/hookdeck/scripts/post.js"
   alias tigerclaw-doctor="bash $FLOX_ENV_PROJECT/scripts/doctor.sh"
+  alias tigerclaw-new="bash $FLOX_ENV_PROJECT/scripts/tigerclaw-launch.sh --new"
   log-discovery() { printf "[$(date +%H:%M)] %s\n" "$*" >> "$FLOX_ENV_PROJECT/.discoveries"; }
 '''
 

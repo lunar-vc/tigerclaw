@@ -7,7 +7,12 @@
 # Expected .themes file format (one theme per block):
 #   THE-XXXX  Title of the theme
 #     https://linear.app/tigerslug/issue/THE-XXXX
+#     researched: 2026-02-15
 #     Label1, Label2
+#
+# Features:
+#   - THE-XXXX keys are OSC 8 clickable links (iTerm2, kitty, etc.)
+#   - "last researched" dates shown as relative age per theme
 #
 
 set -uo pipefail
@@ -21,14 +26,44 @@ AMBER='\033[38;5;214m'
 WHITE='\033[1;37m'
 DIM='\033[38;5;240m'
 GREY='\033[38;5;245m'
+GREEN='\033[38;5;112m'
 BOLD='\033[1m'
 RESET='\033[0m'
 TAG_BG='\033[38;5;130m'
 
+# ── Relative date ─────────────────────────────────────────────────────────
+relative_date() {
+  local date_str="$1"
+  if [ -z "$date_str" ]; then printf 'never'; return; fi
+
+  local now_epoch date_epoch diff
+  now_epoch=$(date +%s)
+  date_epoch=$(date -j -f '%Y-%m-%d' "$date_str" +%s 2>/dev/null || echo 0)
+
+  if [ "$date_epoch" -eq 0 ]; then printf 'unknown'; return; fi
+
+  diff=$(( (now_epoch - date_epoch) / 86400 ))
+
+  if [ $diff -eq 0 ]; then printf 'today'
+  elif [ $diff -eq 1 ]; then printf 'yesterday'
+  elif [ $diff -lt 7 ]; then printf '%dd ago' "$diff"
+  elif [ $diff -lt 30 ]; then printf '%dw ago' "$(( diff / 7 ))"
+  elif [ $diff -lt 365 ]; then printf '%dmo ago' "$(( diff / 30 ))"
+  else printf '%dy ago' "$(( diff / 365 ))"
+  fi
+}
+
+# ── OSC 8 hyperlink helper ────────────────────────────────────────────────
+# Usage: link URL VISIBLE_TEXT
+# Wraps text in an OSC 8 clickable hyperlink (iTerm2, kitty, etc.)
+osc8() {
+  printf '\033]8;;%s\007%s\033]8;;\007' "$1" "$2"
+}
+
 render() {
   clear
 
-  # Count themes (lines starting with THE-)
+  # Count themes
   local count=0
   if [ -f "$THEMES_FILE" ] && [ -s "$THEMES_FILE" ]; then
     count=$(grep -c '^  THE-' "$THEMES_FILE" 2>/dev/null || true)
@@ -62,40 +97,84 @@ render() {
     return
   fi
 
-  # Parse and colorize the themes file
-  printf '\n'
+  # ── Pre-parse themes into parallel arrays ──────────────────────────────
+  local t_keys=() t_titles=() t_urls=() t_dates=() t_labels=()
+  local cur_key="" cur_title="" cur_url="" cur_date="" cur_labels=""
+
   while IFS= read -r line; do
-    # THE-XXXX key line (starts with spaces + THE-)
     if [[ "$line" =~ ^[[:space:]]*(THE-[0-9]+)[[:space:]]+(.+)$ ]]; then
-      local key="${BASH_REMATCH[1]}"
-      local title="${BASH_REMATCH[2]}"
-      printf "  ${ORANGE}${BOLD}%s${RESET}  ${WHITE}%s${RESET}\n" "$key" "$title"
-    # URL line (starts with spaces + http)
+      # Save previous theme
+      if [ -n "$cur_key" ]; then
+        t_keys+=("$cur_key"); t_titles+=("$cur_title")
+        t_urls+=("$cur_url"); t_dates+=("$cur_date")
+        t_labels+=("$cur_labels")
+      fi
+      cur_key="${BASH_REMATCH[1]}"
+      cur_title="${BASH_REMATCH[2]}"
+      cur_url="" ; cur_date="" ; cur_labels=""
+    elif [[ "$line" =~ ^[[:space:]]+researched:[[:space:]]+(.+)$ ]]; then
+      cur_date="${BASH_REMATCH[1]}"
     elif [[ "$line" =~ ^[[:space:]]+(https?://.+)$ ]]; then
-      printf "    ${DIM}%s${RESET}\n" "${BASH_REMATCH[1]}"
-    # Label line (starts with spaces, not URL, not key)
+      cur_url="${BASH_REMATCH[1]}"
     elif [[ "$line" =~ ^[[:space:]]+(.+)$ ]]; then
-      local labels="${BASH_REMATCH[1]}"
-      # Skip blank-ish lines
-      [[ -z "${labels// /}" ]] && continue
-      # Skip if it looks like a THE- line we missed
-      [[ "$labels" =~ ^THE- ]] && continue
-      # Skip if it's a URL
-      [[ "$labels" =~ ^https?:// ]] && continue
-      # Render labels as tags
-      printf "    "
-      IFS=',' read -ra label_arr <<< "$labels"
+      local text="${BASH_REMATCH[1]}"
+      [[ "$text" =~ ^THE- || "$text" =~ ^https?:// || "$text" =~ ^researched: ]] && continue
+      [[ -z "${text// /}" ]] && continue
+      cur_labels="$text"
+    fi
+  done < "$THEMES_FILE"
+
+  # Don't forget last theme
+  if [ -n "$cur_key" ]; then
+    t_keys+=("$cur_key"); t_titles+=("$cur_title")
+    t_urls+=("$cur_url"); t_dates+=("$cur_date")
+    t_labels+=("$cur_labels")
+  fi
+
+  # ── Render themes ──────────────────────────────────────────────────────
+  printf '\n'
+  local i
+  for ((i=0; i<${#t_keys[@]}; i++)); do
+    local key="${t_keys[$i]}"
+    local title="${t_titles[$i]}"
+    local url="${t_urls[$i]}"
+    local rdate="${t_dates[$i]}"
+    local lbls="${t_labels[$i]}"
+
+    # Line 1: clickable key + title
+    printf '  '
+    if [ -n "$url" ]; then
+      osc8 "$url" "$(printf "${ORANGE}${BOLD}%s${RESET}" "$key")"
+    else
+      printf "${ORANGE}${BOLD}%s${RESET}" "$key"
+    fi
+    printf "  ${WHITE}%s${RESET}\n" "$title"
+
+    # Line 2: research age + labels
+    local rel
+    rel=$(relative_date "$rdate")
+
+    printf '    '
+    if [ "$rel" = "never" ]; then
+      printf "${DIM}never researched${RESET}"
+    elif [ "$rel" = "today" ] || [ "$rel" = "yesterday" ]; then
+      printf "${GREEN}%s${RESET}" "$rel"
+    else
+      printf "${GREY}%s${RESET}" "$rel"
+    fi
+
+    if [ -n "$lbls" ]; then
+      printf "  "
+      IFS=',' read -ra label_arr <<< "$lbls"
+      local label
       for label in "${label_arr[@]}"; do
         label=$(echo "$label" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         [ -z "$label" ] && continue
         printf "${TAG_BG}▏${GREY}%s${RESET}  " "$label"
       done
-      printf '\n'
-    # Blank line = spacing between themes
-    elif [ -z "$line" ]; then
-      printf '\n'
     fi
-  done < "$THEMES_FILE"
+    printf '\n\n'
+  done
 
   # Footer
   printf "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"
@@ -105,30 +184,28 @@ render() {
   else
     mtime=$(date -r "$THEMES_FILE" +%H:%M:%S 2>/dev/null || echo "?")
   fi
-  printf "  ${DIM}Updated %s · Ask Claude: \"refresh themes\"${RESET}\n" "$mtime"
+  printf "  ${DIM}Updated %s · click theme key to open in Linear${RESET}\n" "$mtime"
+  printf "  ${DIM}Ask Claude: \"refresh themes\"${RESET}\n"
 }
 
 # ── Main run loop ────────────────────────────────────────────────────────
 run() {
-  # Initial render
   render
 
-  # Watch for file changes — use fswatch if available (macOS), fall back to polling
   if command -v fswatch &>/dev/null; then
     fswatch -o "$THEMES_FILE" 2>/dev/null | while read -r _; do
-      sleep 0.2  # debounce
+      sleep 0.2
       render
     done
   else
-    # Poll fallback — check mtime every 5s
     local last_mtime=""
     while true; do
       sleep 5
+      local current_mtime
       if [ -f "$THEMES_FILE" ]; then
-        local current_mtime
         current_mtime=$(stat -f '%m' "$THEMES_FILE" 2>/dev/null || stat -c '%Y' "$THEMES_FILE" 2>/dev/null || echo "0")
       else
-        local current_mtime="0"
+        current_mtime="0"
       fi
       if [ "$current_mtime" != "$last_mtime" ]; then
         last_mtime="$current_mtime"
@@ -138,7 +215,6 @@ run() {
   fi
 }
 
-# ── Restart loop for crash recovery ──────────────────────────────────────
 while true; do
   run 2>/dev/null || true
   sleep 2

@@ -4,6 +4,7 @@
 #
 # Usage:
 #   tigerclaw              Launch tmux with all panes on one screen
+#   tigerclaw --new        Spawn an additional tigerclaw session
 #   tigerclaw <args>       Pass through to claude directly
 #
 # Layout (single window, 2×2 grid):
@@ -28,6 +29,15 @@ TC_SESSION="tigerclaw"
 TC_SOCKET="tigerclaw"
 TC_TMUX=(tmux -L "$TC_SOCKET")
 
+# ── Spawn mode: create additional session ────────────────────────────────
+if [[ "${1:-}" == "--new" || "${1:-}" == "-n" ]]; then
+  if ! "${TC_TMUX[@]}" has-session -t "$TC_SESSION" 2>/dev/null; then
+    printf '  No existing tigerclaw session. Run \033[1mtigerclaw\033[0m first.\n'
+    exit 1
+  fi
+  exec bash "$(dirname "${BASH_SOURCE[0]}")/tigerclaw-spawn.sh"
+fi
+
 # ── Pass-through mode: any args go straight to claude ──────────────────────
 if [ $# -gt 0 ]; then
   printf '\n'
@@ -43,7 +53,7 @@ if [ -n "${TMUX:-}" ]; then
   CURRENT_SESSION=$(tmux display-message -p '#S' 2>/dev/null || true)
   if [[ "$CURRENT_SESSION" == tigerclaw* ]]; then
     printf '  Already in tigerclaw session.\n'
-    printf '  \033[2mAlt+arrows to switch panes · C-a ? for help\033[0m\n'
+    printf '  \033[2mtigerclaw --new to spawn another · Alt+arrows to switch panes\033[0m\n'
     exit 0
   fi
 fi
@@ -168,7 +178,7 @@ sleep 1
 
 # ── Welcome popup on first attach ──────────────────────────────────────────
 "${TC_TMUX[@]}" set-hook -t "$TC_SESSION" client-attached \
-  "run-shell 'tmux -L ${TC_SOCKET} display-popup -w 55 -h 20 -E \"bash ${TC_HOME}/scripts/welcome-popup.sh\" ; tmux -L ${TC_SOCKET} set-hook -u -t ${TC_SESSION} client-attached'"
+  "run-shell 'tmux -L ${TC_SOCKET} display-popup -w 60 -h 28 -E \"bash ${TC_HOME}/scripts/welcome-popup.sh\" ; tmux -L ${TC_SOCKET} set-hook -u -t ${TC_SESSION} client-attached'"
 
 # ── Attach ───────────────────────────────────────────────────────────────
 exec "${TC_TMUX[@]}" attach -t "$TC_SESSION"

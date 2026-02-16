@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Welcome popup — logo, pipeline stats, and last session context.
+# Welcome popup — logo, pipeline stats, and latest changelog entries.
 
 set -uo pipefail
 
 TC_HOME="${TC_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 PIPELINE_INDEX="$TC_HOME/.pipeline-index.json"
-PROJECT_SLUG="$(echo "$TC_HOME" | tr '/' '-')"
-SESSIONS_DIR="$HOME/.claude/projects/$PROJECT_SLUG/memory/sessions"
+CHANGELOG="$TC_HOME/CHANGELOG.md"
 
 # ── Colors ────────────────────────────────────────────────────────────────
 ORANGE='\033[38;5;208m'
@@ -41,41 +40,38 @@ if [ -f "$PIPELINE_INDEX" ] && [ -s "$PIPELINE_INDEX" ] && command -v jq &>/dev/
   watch=$(jq '[.people[] | select(.action == "WATCH")] | length' "$PIPELINE_INDEX" 2>/dev/null || echo 0)
 fi
 
-# ── Find latest session handoff ───────────────────────────────────────────
-handoff_date=""
-handoff_items=()
-handoff_findings=()
-handoff_next=()
-handoff_open=()
+# ── Parse changelog ───────────────────────────────────────────────────────
+changelog_date=""
+changelog_entries=()
+changelog_prev_date=""
+changelog_prev_entries=()
 
-if [ -d "$SESSIONS_DIR" ]; then
-  latest=$(ls -1 "$SESSIONS_DIR"/*.md 2>/dev/null | sort -r | head -1)
-  if [ -n "$latest" ]; then
-    # Extract the date from filename
-    # Strip multi-session suffix (-2, -3) but keep the full YYYY-MM-DD date
-    handoff_date=$(basename "$latest" .md | sed 's/-[0-9]\{1,\}$//' | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' || basename "$latest" .md)
-
-    # Parse sections from the markdown
-    local_section=""
-    while IFS= read -r line; do
-      case "$line" in
-        "## What was done")   local_section="done" ;;
-        "## Key findings")    local_section="findings" ;;
-        "## Open questions")  local_section="open" ;;
-        "## Next steps")      local_section="next" ;;
-        "## "*)               local_section="" ;;
-        "- "*)
-          item="${line#- }"
-          case "$local_section" in
-            done)     handoff_items+=("$item") ;;
-            findings) handoff_findings+=("$item") ;;
-            open)     handoff_open+=("$item") ;;
-            next)     handoff_next+=("$item") ;;
-          esac
-          ;;
+if [ -f "$CHANGELOG" ]; then
+  current_section=""
+  while IFS= read -r line; do
+    # Match date headers: ## YYYY-MM-DD
+    if [[ "$line" =~ ^##\ ([0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
+      date="${BASH_REMATCH[1]}"
+      if [ -z "$changelog_date" ]; then
+        changelog_date="$date"
+        current_section="latest"
+      elif [ -z "$changelog_prev_date" ]; then
+        changelog_prev_date="$date"
+        current_section="prev"
+      else
+        break
+      fi
+      continue
+    fi
+    # Match entries: - Some text
+    if [[ "$line" =~ ^-\ (.+) ]]; then
+      entry="${BASH_REMATCH[1]}"
+      case "$current_section" in
+        latest) changelog_entries+=("$entry") ;;
+        prev)   changelog_prev_entries+=("$entry") ;;
       esac
-    done < "$latest"
-  fi
+    fi
+  done < "$CHANGELOG"
 fi
 
 # ── Render ────────────────────────────────────────────────────────────────
@@ -108,45 +104,30 @@ else
   printf '\n'
 fi
 
-# Last session handoff
-if [ -n "$handoff_date" ]; then
-  printf "  ${WHITE}${BOLD}Last session${RESET}  ${DIM}%s${RESET}\n" "$handoff_date"
+# Latest updates from changelog
+if [ -n "$changelog_date" ]; then
+  printf "  ${WHITE}${BOLD}Latest updates${RESET}  ${DIM}%s${RESET}\n" "$changelog_date"
 
-  # What was done (max 2 items)
+  # Show up to 5 entries from latest date
   local_count=0
-  for item in "${handoff_items[@]+"${handoff_items[@]}"}"; do
-    [ -z "$item" ] && continue
-    printf "  ${DIM}·${RESET} %s\n" "$(trunc "$item" 46)"
+  for entry in "${changelog_entries[@]+"${changelog_entries[@]}"}"; do
+    [ -z "$entry" ] && continue
+    printf "  ${GREEN}·${RESET} %s\n" "$(trunc "$entry" 46)"
     local_count=$((local_count + 1))
-    [ "$local_count" -ge 2 ] && break
+    [ "$local_count" -ge 5 ] && break
   done
 
-  # Key findings (max 2 items)
-  local_count=0
-  for item in "${handoff_findings[@]+"${handoff_findings[@]}"}"; do
-    [ -z "$item" ] && continue
-    printf "  ${GREEN}▸${RESET} %s\n" "$(trunc "$item" 46)"
-    local_count=$((local_count + 1))
-    [ "$local_count" -ge 2 ] && break
-  done
-
-  # Open questions (max 1 item)
-  for item in "${handoff_open[@]+"${handoff_open[@]}"}"; do
-    [ -z "$item" ] && continue
-    printf "  ${YELLOW}?${RESET} %s\n" "$(trunc "$item" 46)"
-    break
-  done
-
-  # Next steps (max 2 items)
-  if [ "${#handoff_next[@]}" -gt 0 ] 2>/dev/null; then
+  # If fewer than 5 from latest, show some from previous date
+  if [ "$local_count" -lt 5 ] && [ -n "$changelog_prev_date" ]; then
+    remaining=$((5 - local_count))
     printf '\n'
-    printf "  ${WHITE}Next up${RESET}\n"
-    local_count=0
-    for item in "${handoff_next[@]+"${handoff_next[@]}"}"; do
-      [ -z "$item" ] && continue
-      printf "  ${AMBER}→${RESET} %s\n" "$(trunc "$item" 46)"
-      local_count=$((local_count + 1))
-      [ "$local_count" -ge 2 ] && break
+    printf "  ${DIM}%s${RESET}\n" "$changelog_prev_date"
+    prev_count=0
+    for entry in "${changelog_prev_entries[@]+"${changelog_prev_entries[@]}"}"; do
+      [ -z "$entry" ] && continue
+      printf "  ${DIM}· %s${RESET}\n" "$(trunc "$entry" 46)"
+      prev_count=$((prev_count + 1))
+      [ "$prev_count" -ge "$remaining" ] && break
     done
   fi
 

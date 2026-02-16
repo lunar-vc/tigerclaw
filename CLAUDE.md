@@ -690,21 +690,34 @@ node scripts/score-signal.js '{"phd_defense":true,"new_repo":true,"venture_scale
 
 #### What Makes a Good Theme (THE team)
 
-A theme is a specific, actionable investment thesis — granular enough to build a company around, not a generic category.
+A theme is a specific, actionable investment thesis — granular enough to build **exactly one company** around, not a generic category. It names a **specific technology or mechanism** that **solves a specific problem** in a **specific context**.
+
+**The pattern:** `[Specific technology/mechanism] + [solving/replacing/enabling] + [specific problem in specific context]`
 
 **Issue title format:** `[Signal strength] Specific actionable theme title`
 
-**Good theme titles:**
-- `[Strong] Proactive SRE incident prediction using telemetry-driven agents`
-- `[Medium] Laser-based optical connectivity for resilient disaster response`
-- `[Strong] Low latency A2A payment infrastructure based on WebRTC`
-- `[Medium] Federated fine-tuning platforms for privacy-constrained enterprise LLM deployment`
+**Good theme titles (from live portfolio — match this granularity):**
+- `[Strong] Micro-ring resonator optical I/O chiplets for die-to-die photonic interconnect`
+- `[Medium] MEMS/piezo-based optical circuit switches replacing static patch panels in AI fabrics`
+- `[Strong] Vision-guided robotic fiber alignment replacing manual photonic packaging`
+- `[Medium] Processing-in-DRAM architectures eliminating memory wall for LLM inference`
+- `[Strong] Firecracker-based permission envelopes for AI agents`
+- `[Strong] Hot-cold memory tiering for rapid AI checkpoint cycles`
 
 **Bad theme titles:**
+- `Optical CXL` (sector label, not a thesis — which mechanism? replacing what?)
+- `CXL fabric orchestration` (category — what specific software? for what topology problem?)
+- `Non-float PIM` (just combining two existing themes — what's the specific bitcell design? for what workload?)
 - `Datalakehouses` (generic category, not a thesis)
-- `Disaster response` (too broad)
 - `AI infrastructure for payments` (vague, could mean anything)
 - `Cybersecurity` (not a thesis, just a sector)
+
+**Specificity self-check — every theme must pass ALL of these:**
+1. Could you build exactly ONE company around this? (If it describes 3 companies, split it)
+2. Does the title name a specific technology or mechanism? (Not a category)
+3. Does it specify what's being replaced, eliminated, or enabled? (Not just "better X")
+4. Would a technical founder read this and say "yes, that's what I'm building"? (Not "that's the space I'm in")
+5. Is it at the same granularity as the live portfolio examples above?
 
 **Issue description must include:**
 - **One-liner:** Why this is interesting *now* (timing signal)

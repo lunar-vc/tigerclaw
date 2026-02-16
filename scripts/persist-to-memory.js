@@ -19,6 +19,12 @@
 //     "background": "PhD at MIT", "work": "Runtime verification",
 //     "signal_strength": "medium", "signal": "PhD defense",
 //     "links": { "paper": "url", "website": "url", "linkedin": "url", "github": "url", "twitter": "url" },
+//     "relationships": {
+//       "co_authors": ["wei-liu", "sarah-chen"],
+//       "advisor": "prof-michael-jordan",
+//       "lab": "Berkeley RISE Lab",
+//       "prior_companies": ["Google", "DeepMind"]
+//     },
 //     "memo": "research/2026-02-15-scan.md",
 //     "next_step": "Monitor for PhD defense" }
 //
@@ -85,7 +91,7 @@ async function updatePipelineIndex(signal) {
   const slug = signal.slug || slugify(signal.name || signal.title);
 
   if (signal.entity === 'person') {
-    index.people[slug] = {
+    const entry = {
       name: signal.name,
       action: signal.action || 'WATCH',
       linear: signal.linear || null,
@@ -94,6 +100,27 @@ async function updatePipelineIndex(signal) {
       last_seen: today(),
       memo: signal.memo || null
     };
+    // Persist relationships if provided (backwards-compatible — old entries work without)
+    if (signal.relationships) {
+      // Merge with existing relationships if updating an existing entry
+      const existing = index.people[slug]?.relationships || {};
+      entry.relationships = {
+        co_authors: dedup([...(existing.co_authors || []), ...(signal.relationships.co_authors || [])]),
+        advisor: signal.relationships.advisor || existing.advisor || null,
+        lab: signal.relationships.lab || existing.lab || null,
+        prior_companies: dedup([...(existing.prior_companies || []), ...(signal.relationships.prior_companies || [])]),
+      };
+      // Remove empty fields
+      if (!entry.relationships.co_authors.length) delete entry.relationships.co_authors;
+      if (!entry.relationships.advisor) delete entry.relationships.advisor;
+      if (!entry.relationships.lab) delete entry.relationships.lab;
+      if (!entry.relationships.prior_companies.length) delete entry.relationships.prior_companies;
+      if (!Object.keys(entry.relationships).length) delete entry.relationships;
+    } else if (index.people[slug]?.relationships) {
+      // Preserve existing relationships when updating without new ones
+      entry.relationships = index.people[slug].relationships;
+    }
+    index.people[slug] = entry;
   } else if (signal.entity === 'company') {
     index.companies[slug] = {
       name: signal.name,
@@ -156,6 +183,16 @@ function renderPersonFile(s) {
   }
   if (s.memo) lines.push(`- **Memo:** ${s.memo}`);
   if (s.next_step) lines.push(`- **Next step:** ${s.next_step}`);
+  // Network section for relationships
+  if (s.relationships) {
+    lines.push('');
+    lines.push('## Network');
+    const r = s.relationships;
+    if (r.co_authors?.length) lines.push(`- **Co-authors:** ${r.co_authors.join(', ')}`);
+    if (r.advisor) lines.push(`- **Advisor:** ${r.advisor}`);
+    if (r.lab) lines.push(`- **Lab:** ${r.lab}`);
+    if (r.prior_companies?.length) lines.push(`- **Prior companies:** ${r.prior_companies.join(', ')}`);
+  }
   lines.push('');
   return lines.join('\n');
 }
@@ -311,6 +348,10 @@ function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function dedup(arr) {
+  return [...new Set(arr.filter(Boolean))];
+}
+
 // ── Main ────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -323,7 +364,7 @@ async function main() {
 
   const slug = signal.slug || slugify(signal.name || signal.title);
 
-  // All three writes
+  // All three writes + graph sync
   await updatePipelineIndex(signal);
   await writeTopicFile(signal, slug);
   await updateMemoryIndex(signal, slug);
@@ -345,6 +386,30 @@ async function main() {
           await upsertNode(graph, 'Theme', { key: signal.theme, title: signal.theme });
           await upsertEdge(graph, 'Person', slug, 'HAS_EXPERTISE_IN', 'Theme', signal.theme,
             { type: 'direct', confidence: '0.7' });
+        }
+        // Sync relationship edges
+        const rel = signal.relationships || {};
+        if (rel.co_authors?.length) {
+          for (const coauthor of rel.co_authors) {
+            await upsertNode(graph, 'Person', { slug: coauthor, name: coauthor });
+            await upsertEdge(graph, 'Person', slug, 'CO_AUTHOR', 'Person', coauthor, {});
+          }
+        }
+        if (rel.advisor) {
+          const advisorSlug = slugify(rel.advisor);
+          await upsertNode(graph, 'Person', { slug: advisorSlug, name: rel.advisor });
+          await upsertEdge(graph, 'Person', slug, 'ADVISED_BY', 'Person', advisorSlug, {});
+        }
+        if (rel.lab) {
+          await upsertNode(graph, 'Institution', { name: rel.lab });
+          await upsertEdge(graph, 'Person', slug, 'AFFILIATED_WITH', 'Institution', rel.lab, {});
+        }
+        if (rel.prior_companies?.length) {
+          for (const company of rel.prior_companies) {
+            const companySlug = slugify(company);
+            await upsertNode(graph, 'Company', { slug: companySlug, name: company });
+            await upsertEdge(graph, 'Person', slug, 'WORKED_AT', 'Company', companySlug, {});
+          }
         }
       } else if (signal.entity === 'company') {
         await upsertNode(graph, 'Company', {

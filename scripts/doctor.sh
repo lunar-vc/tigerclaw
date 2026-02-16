@@ -79,6 +79,33 @@ else
   hint "Run: flox activate  (provides ripgrep)"
 fi
 
+if command -v gh >/dev/null 2>&1; then
+  pass "GitHub CLI $(gh --version 2>/dev/null | head -1 | awk '{print $3}')"
+  if gh auth status >/dev/null 2>&1; then
+    pass "gh authenticated"
+  else
+    warn "gh not authenticated"
+    hint "Run: gh auth login"
+  fi
+else
+  fail "GitHub CLI (gh) not found"
+  hint "Run: flox activate  (provides gh)"
+fi
+
+if command -v gemini >/dev/null 2>&1; then
+  pass "Gemini CLI $(gemini --version 2>/dev/null)"
+else
+  warn "Gemini CLI not found (needed for LinkedIn/Reddit fetching)"
+  hint "Run: flox activate  (provides gemini-cli)"
+fi
+
+if command -v tmux >/dev/null 2>&1; then
+  pass "tmux available"
+else
+  warn "tmux not found (needed for gemini sessions)"
+  hint "Run: flox activate  (provides tmux)"
+fi
+
 # ── 2. API Keys ─────────────────────────────────────────────────────────────
 
 printf "\n${BOLD}API Keys (.env)${RESET}\n"
@@ -259,6 +286,20 @@ if [ -f "$PROJECT_ROOT/CLAUDE.md" ]; then
   pass "CLAUDE.md present"
 else
   fail "CLAUDE.md missing — Claude Code won't have project instructions"
+fi
+
+if [ -d "$PROJECT_ROOT/data/graph" ]; then
+  pass "data/graph/ directory exists (FalkorDB)"
+else
+  warn "data/graph/ missing — run: node scripts/init-graph.js"
+  hint "mkdir -p data/graph && node scripts/init-graph.js"
+fi
+
+if [ -d "$PROJECT_ROOT/node_modules/falkordblite" ]; then
+  pass "falkordblite installed (network graph)"
+else
+  warn "falkordblite not in node_modules"
+  hint "Run: npm install (or check package.json)"
 fi
 
 # ── Summary ─────────────────────────────────────────────────────────────────

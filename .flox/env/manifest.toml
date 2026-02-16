@@ -4,15 +4,28 @@ version = 1
 
 ## Packages ----------------------------------------------------------------
 [install]
+# Core runtime
 nodejs_22.pkg-path = "nodejs_22"
 git.pkg-path = "git"
+
+# CLI tools
+gh.pkg-path = "gh"
 curl.pkg-path = "curl"
 jq.pkg-path = "jq"
 ripgrep.pkg-path = "ripgrep"
 wget.pkg-path = "wget"
 bc.pkg-path = "bc"
+
+# Session / pane infrastructure
 tmux.pkg-path = "tmux"
 fswatch.pkg-path = "fswatch"
+
+# AI CLIs (used by linkedin-fetch, reddit-fetch skills via tmux)
+gemini-cli.pkg-path = "gemini-cli"
+
+# Chromium for Puppeteer MCP (Linux only; macOS uses system Chrome)
+chromium.pkg-path = "chromium"
+chromium.systems = ["x86_64-linux", "aarch64-linux"]
 
 ## Static Environment Variables --------------------------------------------
 [vars]
@@ -70,7 +83,15 @@ on-activate = '''
     echo "  WARNING: No Chrome found. Run: npx puppeteer browsers install chrome"
   fi
 
-  # --- 3. Clone / update agent-skills ------------------------------------
+  # --- 3. Install npm dependencies if needed ----------------------------
+  if [ -f "$FLOX_ENV_PROJECT/package.json" ] && [ ! -d "$FLOX_ENV_PROJECT/node_modules" ]; then
+    echo "  Installing npm dependencies..."
+    (cd "$FLOX_ENV_PROJECT" && npm install --no-fund --no-audit --silent 2>/dev/null) && echo "  npm: installed" || echo "  WARNING: npm install failed"
+  elif [ -d "$FLOX_ENV_PROJECT/node_modules" ]; then
+    echo "  npm: node_modules present"
+  fi
+
+  # --- 4. Clone / update agent-skills ------------------------------------
   SKILLS_TARGET="$FLOX_ENV_PROJECT/.claude/skills/agent-skills"
   if [ -d "$SKILLS_TARGET/.git" ]; then
     git -C "$SKILLS_TARGET" pull --quiet 2>/dev/null && echo "  Agent skills: updated" || echo "  Agent skills: present (pull failed, offline?)"
@@ -83,10 +104,11 @@ on-activate = '''
     fi
   fi
 
-  # --- 4. Ensure research directory exists --------------------------------
+  # --- 5. Ensure research + data directories exist -----------------------
   mkdir -p "$FLOX_ENV_PROJECT/research"
+  mkdir -p "$FLOX_ENV_PROJECT/data/graph"
 
-  # --- 5. Create tigerclaw launcher in env bin ----------------------------
+  # --- 6. Create tigerclaw launcher in env bin ----------------------------
   mkdir -p "$FLOX_ENV_CACHE/bin"
   cat > "$FLOX_ENV_CACHE/bin/tigerclaw" << LAUNCHER
 #!/usr/bin/env bash
@@ -95,12 +117,12 @@ LAUNCHER
   chmod +x "$FLOX_ENV_CACHE/bin/tigerclaw"
   export PATH="$FLOX_ENV_CACHE/bin:$PATH"
 
-  # --- 6. Export dynamic env vars -----------------------------------------
+  # --- 7. Export dynamic env vars -----------------------------------------
   export TIGERCLAW_HOME="$FLOX_ENV_PROJECT"
   export SKILLS_DIR="$FLOX_ENV_PROJECT/.claude/skills/agent-skills"
   export RESEARCH_DIR="$FLOX_ENV_PROJECT/research"
 
-  # --- 7. Post-activate validation ------------------------------------------
+  # --- 8. Post-activate validation ------------------------------------------
   TC_WARNINGS=0
   if [ ! -f "$FLOX_ENV_PROJECT/.env" ]; then
     TC_WARNINGS=$((TC_WARNINGS + 1))
@@ -111,8 +133,16 @@ LAUNCHER
   if [ ! -d "$FLOX_ENV_PROJECT/.claude/skills/agent-skills/.git" ]; then
     TC_WARNINGS=$((TC_WARNINGS + 1))
   fi
+  # Check gh auth
+  if ! gh auth status >/dev/null 2>&1; then
+    TC_WARNINGS=$((TC_WARNINGS + 1))
+  fi
+  # Check gemini auth
+  if ! command -v gemini >/dev/null 2>&1; then
+    TC_WARNINGS=$((TC_WARNINGS + 1))
+  fi
 
-  # --- 8. Welcome banner (in hook to avoid p10k instant prompt conflict) ---
+  # --- 9. Welcome banner (in hook to avoid p10k instant prompt conflict) ---
   ORANGE='\033[38;5;208m'
   AMBER='\033[38;5;214m'
   YELLOW='\033[38;5;220m'
@@ -125,7 +155,9 @@ LAUNCHER
   echo ""
   source "$FLOX_ENV_PROJECT/scripts/logo.sh"
   echo ""
-  printf "  Node : $(node --version)\n"
+  printf "  Node   : $(node --version)\n"
+  printf "  gh     : $(gh --version 2>/dev/null | head -1 | awk '{print $3}' || echo 'not found')\n"
+  printf "  gemini : $(gemini --version 2>/dev/null || echo 'not found')\n"
   echo ""
   printf "  ${WHITE}Quick start${RST}\n"
   printf "  ${DIM}tigerclaw${RST}               — Launch tmux\n"

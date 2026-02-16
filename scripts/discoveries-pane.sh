@@ -136,13 +136,14 @@ render_entry() {
   fi
 
   # Parse JSON fields with lightweight extraction (no jq dependency in pane)
-  local status name detail strength reason time_str
+  local status name detail strength reason time_str network
   status=$(echo "$line" | sed -n 's/.*"status" *: *"\([^"]*\)".*/\1/p')
   name=$(echo "$line" | sed -n 's/.*"name" *: *"\([^"]*\)".*/\1/p')
   detail=$(echo "$line" | sed -n 's/.*"detail" *: *"\([^"]*\)".*/\1/p')
   strength=$(echo "$line" | sed -n 's/.*"strength" *: *"\([^"]*\)".*/\1/p')
   reason=$(echo "$line" | sed -n 's/.*"reason" *: *"\([^"]*\)".*/\1/p')
   time_str=$(echo "$line" | sed -n 's/.*"time" *: *"\([^"]*\)".*/\1/p')
+  network=$(echo "$line" | sed -n 's/.*"network" *: *"\([^"]*\)".*/\1/p')
 
   [ -z "$name" ] && return
 
@@ -169,11 +170,13 @@ render_entry() {
       esac
       printf "  ${time_prefix}${GREEN}●${RESET} ${WHITE}${BOLD}%s${RESET}%s" "$name" "$strength_label"
       [ -n "$detail" ] && printf "\n    ${DIM}%s${RESET}" "$detail"
+      [ -n "$network" ] && printf "\n    ${AMBER}↳ %s${RESET}" "$network"
       printf '\n'
       ;;
     watching)
       printf "  ${time_prefix}${AMBER}◐${RESET} ${WHITE}%s${RESET} ${DIM}(watching)${RESET}" "$name"
       [ -n "$detail" ] && printf "\n    ${DIM}%s${RESET}" "$detail"
+      [ -n "$network" ] && printf "\n    ${AMBER}↳ %s${RESET}" "$network"
       printf '\n'
       ;;
     disqualified)

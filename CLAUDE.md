@@ -308,7 +308,13 @@ Persistent memory using Claude Code's built-in memory + structured topic files. 
       "theme": "THE-1810",
       "type": "latent_founder",
       "last_seen": "2026-02-15",
-      "memo": "research/2026-02-15-scan.md"
+      "memo": "research/2026-02-15-scan.md",
+      "relationships": {
+        "co_authors": ["wei-liu", "sarah-chen"],
+        "advisor": "prof-michael-jordan",
+        "lab": "Berkeley RISE Lab",
+        "prior_companies": ["Google", "DeepMind"]
+      }
     }
   },
   "companies": {
@@ -339,7 +345,7 @@ Persistent memory using Claude Code's built-in memory + structured topic files. 
 **How to persist — use the auto-persist script:**
 ```bash
 # Person
-node scripts/persist-to-memory.js '{"entity":"person","name":"Jane Doe","action":"WATCH","theme":"THE-1810","background":"PhD at MIT","work":"Runtime verification","signal":"PhD defense","signal_strength":"medium","links":{"paper":"url","linkedin":"url"},"memo":"research/2026-02-15-scan.md","next_step":"Monitor for PhD defense"}'
+node scripts/persist-to-memory.js '{"entity":"person","name":"Jane Doe","action":"WATCH","theme":"THE-1810","background":"PhD at MIT","work":"Runtime verification","signal":"PhD defense","signal_strength":"medium","links":{"paper":"url","linkedin":"url"},"relationships":{"co_authors":["wei-liu"],"lab":"MIT CSAIL","advisor":"Prof. Smith"},"memo":"research/2026-02-15-scan.md","next_step":"Monitor for PhD defense"}'
 
 # Company
 node scripts/persist-to-memory.js '{"entity":"company","name":"Acme Inc","action":"WATCH","theme":"THE-1810","founded_by":"Jane Doe","product":"Verification platform","funded":null,"memo":"research/...","next_step":"Verify funding"}'
@@ -657,22 +663,29 @@ Run `node scripts/score-signal.js` with signal attributes to get a reproducible 
 |--------|--------|
 | PhD defense in last 6 months | +3 |
 | Left FAANG/top lab in last 90 days | +3 |
+| Network gravity (co-author of anchor) | +3 |
 | New GitHub repo with 10+ commits | +2 |
 | Conference talk at top venue | +2 |
-| Multiple converging signals | +2 |
+| Patent filing (first inventor) | +2 |
 | Venture-scale problem (TAM >$1B) | +2 |
 | Prior startup experience | +2 |
+| Convergence bonus (auto: 3+ positive signals) | +2 |
 | Open-source project with traction | +1 |
 | Active on social with tech focus | +1 |
+| Advisor prestige (known founder/top lab) | +1 |
+| Recent signal (0-30 days) | +1 |
+| Signal 31-90 days old | +0 |
+| Signal 91-180 days old | -1 |
+| Academic at top-10 lab with GitHub | -1 |
 | Academic-only pattern (no builder signal) | -2 |
-| >90 days since last signal | -2 |
+| Stale signal (>180 days) | -2 |
 | Already funded (seed+) | -3 |
 
-**Bands:** Strong = 8+ | Medium = 4-7 | Weak = 1-3 | Pass = 0 or below
+**Bands:** Strong = 7+ | Medium = 4-6 | Weak = 1-3 | Pass = 0 or below
 
 ```bash
-node scripts/score-signal.js '{"phd_defense":true,"new_repo":true,"venture_scale":true}'
-# → {"score":7,"strength":"medium","breakdown":[...]}
+node scripts/score-signal.js '{"phd_defense":true,"new_repo":true,"venture_scale":true,"days_since_signal":10}'
+# → {"score":10,"strength":"strong","breakdown":[...]}
 ```
 
 #### What Makes a Good Theme (THE team)
@@ -739,7 +752,106 @@ node scripts/scan-diff.js '{"signals":[{"name":"Dr. Sarah Chen","action":"WATCH"
 }
 ```
 
-**When to use:** Before processing scan results, pipe them through `scan-diff.js`. Focus effort on `new` signals first, then review `changed` signals for updates. Skip `known` signals entirely unless doing a full re-evaluation.
+**When to use:** Before processing scan results, pipe them through `scan-diff.js`. Focus effort on `new` signals first, then review `changed` signals for updates. Skip `known` signals entirely unless doing a full re-evaluation. Now also detects relationship changes (new co-authors, advisor, lab, prior companies).
+
+### Network Graph (`graph`)
+
+FalkorDB-powered relationship graph. Tracks co-author networks, institutional affiliations, and advisor relationships across the pipeline. Enables network gravity scoring and 1-hop discovery.
+
+**Scripts:**
+- `scripts/init-graph.js` — initialize/reset graph schema
+- `scripts/backfill-graph.js` — populate graph from pipeline index + enrichment cache
+- `scripts/graph-sync.js` — sync a single person/company (called by persist-to-memory.js)
+- `scripts/network-gravity-score.js` — score proximity to anchors (REACH_OUT/IN_PROGRESS)
+- `scripts/one-hop-search.js` — find 1-hop neighbors not in pipeline
+
+**Data:** `data/graph/` (persistent FalkorDBLite, gitignored)
+
+**Usage:**
+```bash
+# Initialize graph (first time or reset)
+node scripts/init-graph.js --reset
+
+# Backfill from pipeline data
+node scripts/backfill-graph.js
+
+# Score a person's network proximity to anchors
+node scripts/network-gravity-score.js <person-slug>
+# → {"network_gravity_score":5,"strength":"medium","breakdown":[...],"anchors":["aliakbar-nafar"]}
+
+# Find undiscovered 1-hop neighbors of an anchor
+node scripts/one-hop-search.js <person-slug>
+node scripts/one-hop-search.js aliakbar-nafar --write-discoveries
+```
+
+**Network gravity scoring rubric:**
+
+| Proximity | Points |
+|-----------|--------|
+| 1-hop co-author of anchor | +5 |
+| 2-hop from anchor | +2 |
+| Same lab as anchor | +1 |
+| Advised by known founder | +2 |
+
+**When to use:** After enrichment, use `network-gravity-score.js` to add network context to signal scoring. Use `one-hop-search.js` after identifying a REACH_OUT candidate to find their collaborators. Graph syncs automatically via `persist-to-memory.js`.
+
+### New Signal Sources
+
+Three additional scan scripts beyond the core latent-founder-signals search:
+
+**`scripts/departure-scan.js`** — FAANG/top-lab departure monitoring
+```bash
+node scripts/departure-scan.js                    # All companies, past week
+node scripts/departure-scan.js --company=Google --domain=ai
+```
+Generates brave_news_search queries for corporate departures. Use `left_faang` or `departure` flag in score-signal.js.
+
+**`scripts/conference-scan.js`** — Conference speaker discovery
+```bash
+node scripts/conference-scan.js --domain=ai       # AI conferences for current year
+```
+Targets top-5 conferences per domain. Keynote/invited speakers = high signal.
+
+**`scripts/patent-scan.js`** — Patent filing monitoring
+```bash
+node scripts/patent-scan.js --domain=quantum      # Quantum patent filings
+node scripts/patent-scan.js --individual-only      # Only individual assignees
+```
+First-inventor patents without corporate assignee are extremely strong founder signals. Use `patent_filing` flag in score-signal.js.
+
+### Theme Coverage Report (`theme-coverage-report`)
+
+Shows which themes need attention. Run at session startup or before planning scans.
+
+**Location:** `scripts/theme-coverage-report.js`
+
+**Usage:**
+```bash
+node scripts/theme-coverage-report.js              # Human-readable
+node scripts/theme-coverage-report.js --json        # Machine-readable
+```
+
+Reports: never-researched themes, stale themes (>30 days), themes with 0 pipeline signals, and recommends the next scan target.
+
+### Query Tracker (`query-tracker`)
+
+Logs query → signal conversion rates for optimization.
+
+**Location:** `scripts/query-tracker.js`, `scripts/query-optimization-report.js`
+
+**Usage:**
+```bash
+# Log a query result
+node scripts/query-tracker.js log '{"query":"...","source":"departure_scan","results":8,"signals":{"watch":2,"reach_out":0,"pass":6}}'
+
+# View stats
+node scripts/query-tracker.js stats
+
+# Optimization report (need 10+ entries)
+node scripts/query-optimization-report.js
+```
+
+Data stored in `.query-performance.jsonl`. After 4-6 weeks, run the optimization report to identify high-yield and low-yield queries.
 
 ### Session Handoff (`session-handoff`)
 

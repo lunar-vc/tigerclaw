@@ -109,6 +109,57 @@ function detectChanges(existing, incoming) {
     }
   }
 
+  // Relationship changes — detect new co-authors, advisor, lab, companies
+  if (incoming.relationships) {
+    const existingRel = existing.relationships || {};
+
+    // New co-authors
+    if (incoming.relationships.co_authors?.length) {
+      const existingCoauthors = new Set(existingRel.co_authors || []);
+      const newCoauthors = incoming.relationships.co_authors.filter(c => !existingCoauthors.has(c));
+      if (newCoauthors.length) {
+        changes.push({
+          field: 'relationships.co_authors',
+          from: existingRel.co_authors || [],
+          to: [...existingCoauthors, ...newCoauthors],
+          added: newCoauthors,
+        });
+      }
+    }
+
+    // Advisor changed
+    if (incoming.relationships.advisor && incoming.relationships.advisor !== existingRel.advisor) {
+      changes.push({
+        field: 'relationships.advisor',
+        from: existingRel.advisor || null,
+        to: incoming.relationships.advisor,
+      });
+    }
+
+    // Lab changed
+    if (incoming.relationships.lab && incoming.relationships.lab !== existingRel.lab) {
+      changes.push({
+        field: 'relationships.lab',
+        from: existingRel.lab || null,
+        to: incoming.relationships.lab,
+      });
+    }
+
+    // New prior companies
+    if (incoming.relationships.prior_companies?.length) {
+      const existingCompanies = new Set(existingRel.prior_companies || []);
+      const newCompanies = incoming.relationships.prior_companies.filter(c => !existingCompanies.has(c));
+      if (newCompanies.length) {
+        changes.push({
+          field: 'relationships.prior_companies',
+          from: existingRel.prior_companies || [],
+          to: [...existingCompanies, ...newCompanies],
+          added: newCompanies,
+        });
+      }
+    }
+  }
+
   return changes;
 }
 

@@ -22,8 +22,11 @@ node_modules/
 # Enrichment cache (local, rebuilt by fetching)
 .enrichment-cache/
 
-# FalkorDB graph persistence (local, rebuilt by seeding)
+# FalkorDB graph data (local, rebuilt by backfill-graph.js)
 data/graph/
+
+# Query performance log (local analytics)
+.query-performance.jsonl
 
 # Session-scoped discovery feed
 .discoveries

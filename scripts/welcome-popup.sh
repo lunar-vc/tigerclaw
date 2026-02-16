@@ -134,8 +134,14 @@ if [ -n "$changelog_date" ]; then
   printf '\n'
 fi
 
-# Footer
-printf "  ${GREY}© Morris Clay 2026${RESET}\n"
+# Footer — read user identity if available
+USER_IDENTITY_FILE="$TC_HOME/.user-identity.json"
+if [ -f "$USER_IDENTITY_FILE" ] && command -v jq &>/dev/null; then
+  USER_NAME=$(jq -r '.name // "Lunar Ventures"' "$USER_IDENTITY_FILE" 2>/dev/null)
+else
+  USER_NAME="Lunar Ventures"
+fi
+printf "  ${GREY}© %s %s${RESET}\n" "$USER_NAME" "$(date +%Y)"
 printf '\n'
 printf "  ${DIM}press Enter or ESC${RESET}\n"
 printf '\n'

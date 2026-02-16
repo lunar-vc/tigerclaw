@@ -19,6 +19,9 @@ node_modules/
 # Pipeline dedup index (local state, rebuilt from memory)
 .pipeline-index.json
 
+# User identity (populated by session startup via Linear MCP)
+.user-identity.json
+
 # Enrichment cache (local, rebuilt by fetching)
 .enrichment-cache/
 

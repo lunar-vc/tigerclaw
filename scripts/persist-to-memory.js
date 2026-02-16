@@ -54,6 +54,15 @@ const MEMORY_DIR = join(process.env.HOME, '.claude/projects', projectSlug, 'memo
 
 const PIPELINE_INDEX = join(PROJECT_ROOT, '.pipeline-index.json');
 const MEMORY_INDEX = join(MEMORY_DIR, 'MEMORY.md');
+const USER_IDENTITY = join(PROJECT_ROOT, '.user-identity.json');
+
+// ── Load user identity (populated by session startup via Linear MCP) ────
+let USER = { name: 'Lunar Ventures', firstName: '', org: 'Lunar Ventures', role: 'GP' };
+try {
+  USER = JSON.parse(await readFile(USER_IDENTITY, 'utf8'));
+} catch {
+  // No identity file yet — fall back to org name only
+}
 
 // ── Read input ──────────────────────────────────────────────────────────
 
@@ -308,9 +317,14 @@ function generateOutreach(signal) {
   else if (signal.signal) specificDetail = `your ${signal.signal}`;
   else specificDetail = `your work on ${work}`;
 
+  const userName = USER.name || USER.org;
+  const userFirstName = USER.firstName || USER.name?.split(' ')[0] || '';
+  const userRole = USER.role || 'investor';
+  const userOrg = USER.org || '';
+
   const linkedin = `## LinkedIn Message
 
-Hi ${name} — I'm Morris Clay, GP at Lunar Ventures. We invest at day -1 into deep tech.
+Hi ${name} — I'm ${userName}${userRole ? `, ${userRole}` : ''} at ${userOrg}. We invest at day -1 into deep tech.
 
 I came across ${specificDetail}${affiliation ? ` at ${affiliation}` : ''} — particularly your focus on ${primitive}.
 
@@ -320,11 +334,11 @@ Would love to learn more about where you're taking this. Open to a quick chat?`;
 
   const email = `## Email Draft
 
-Subject: Your work on ${primitive} — Lunar Ventures
+Subject: Your work on ${primitive} — ${userOrg}
 
 Hi ${name},
 
-I'm Morris Clay, a GP at Lunar Ventures — a deep tech fund that invests at inception (day -1 to day 0).
+I'm ${userName}${userRole ? `, a ${userRole}` : ''} at ${userOrg} — a deep tech fund that invests at inception (day -1 to day 0).
 
 ${specificDetail.charAt(0).toUpperCase() + specificDetail.slice(1)} caught my attention because it aligns with our thesis around ${theme}.
 
@@ -333,7 +347,7 @@ I'd love to hear more about where you're headed with this. No pitch needed — j
 Happy to share more about what we're seeing in this space if useful.
 
 Best,
-Morris`;
+${userFirstName}`;
 
   return `\n${linkedin}\n\n${email}\n`;
 }

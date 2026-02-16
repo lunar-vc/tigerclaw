@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-02-16
+- Make user identity dynamic from Linear MCP instead of hardcoded
 - Filter completed/canceled/disqualified from pipeline pane and show Linear status
 - Rewrite pipeline pane as Linear-powered deal dashboard
 - Add auto-updating changelog and show latest updates in welcome popup

@@ -914,6 +914,20 @@ node scripts/update-pipeline-status.js jane-doe DONE
 
 On every session start, **immediately launch all three startup tasks in the background** using the Task tool with `run_in_background: true`. This lets you greet the user and start taking requests while the panes populate. Do NOT block on these — fire and forget.
 
+**0. Write user identity (before launching background tasks):**
+
+Call `get_user("me")` via Linear MCP, then write `.user-identity.json` with the authenticated user's info:
+```json
+{
+  "name": "Full Name",
+  "email": "user@example.com",
+  "firstName": "First",
+  "org": "Lunar Ventures",
+  "role": "GP"
+}
+```
+This file is read by `persist-to-memory.js` (outreach templates) and `welcome-popup.sh` (copyright). The `org` and `role` fields should be set from context or kept at defaults. This must complete before background tasks start so the identity is available.
+
 **1. Refresh the themes pane (background):**
 
 1. **Clean up stale states first:** run `node scripts/touch-theme.js --cleanup` — this replaces any leftover "researching" status from a crashed/interrupted previous session with the actual date from memory (or removes the line if no date exists). "Researching" is a transient state that must not survive across sessions.

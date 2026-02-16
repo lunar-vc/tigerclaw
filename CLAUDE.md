@@ -912,7 +912,7 @@ node scripts/update-pipeline-status.js jane-doe DONE
 
 ## Session Startup
 
-On every session start, **immediately launch both startup tasks in the background** using the Task tool with `run_in_background: true`. This lets you greet the user and start taking requests while the panes populate. Do NOT block on these — fire and forget.
+On every session start, **immediately launch all three startup tasks in the background** using the Task tool with `run_in_background: true`. This lets you greet the user and start taking requests while the panes populate. Do NOT block on these — fire and forget.
 
 **1. Refresh the themes pane (background):**
 
@@ -929,7 +929,14 @@ On every session start, **immediately launch both startup tasks in the backgroun
    Omit the `researched:` line if no date is found in the memory file. **Never write `researched: researching`** — that status is only set live by `touch-theme.js` during an active scan.
 5. Write to `.themes` (the themes pane watches this file and auto-renders — theme keys are clickable links to Linear, research age is shown per theme)
 
-**2. Sync pipeline statuses from Linear (background):**
+**2. Populate pipeline pane (background):**
+
+1. Query Linear: `list_issues(team="Dealflow", assignee="me")`
+2. Build JSON with id, title, url, status for each deal
+3. Run `node scripts/refresh-pipeline.js '<JSON>'`
+4. Pipeline pane auto-refreshes (watches `.pipeline` via fswatch)
+
+**3. Sync pipeline statuses from Linear (background):**
 
 1. Read `.pipeline-index.json`
 2. For every entry with a `linear` issue ID (e.g. `DEAL-1593`):
@@ -941,9 +948,9 @@ On every session start, **immediately launch both startup tasks in the backgroun
    - If the mapped action differs from current, run: `node scripts/update-pipeline-status.js <slug> <new-action>`
 3. The pipeline pane auto-refreshes when the index file changes
 
-Both tasks run concurrently in background agents. The user sees the panes update live as data arrives. You are free to respond to user requests immediately — do not wait for these to finish.
+All three tasks run concurrently in background agents. The user sees the panes update live as data arrives. You are free to respond to user requests immediately — do not wait for these to finish.
 
-When the user says **"refresh themes"**, repeat step 1 (foreground is fine). When the user says **"sync pipeline"**, repeat step 2 (foreground is fine).
+When the user says **"refresh themes"**, repeat step 1 (foreground is fine). When the user says **"refresh pipeline"**, repeat step 2 (foreground is fine). When the user says **"sync pipeline"**, repeat step 3 (foreground is fine).
 
 ## Session Shutdown
 
@@ -963,6 +970,7 @@ This is not optional — every session that produced research, signals, or pipel
 - **Puppeteer MCP** — headless Chrome for JS-rendered pages and screenshots
 - **Linear MCP** — project/issue management (authenticate with `/mcp`)
 - **Themes pane** — watches `.themes` file, populated by Claude via Linear MCP on session start
+- **Pipeline pane** — watches `.pipeline` + `.pipeline-index.json`, populated by `refresh-pipeline.js` from Linear MCP on session start
 - **Research directory** is at `research/` — all outputs go here
 - **jq** is available for JSON processing
 - **ripgrep** (`rg`) is available for fast text search

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-02-16
+- Rewrite pipeline pane as Linear-powered deal dashboard
 - Add auto-updating changelog and show latest updates in welcome popup
 - Add /discover-themes command and enforce theme specificity
 - Add --fix mode, API key validation, and MCP auth checks to doctor

@@ -36,6 +36,9 @@ data/graph/
 # Session-scoped themes (populated by Claude via Linear MCP)
 .themes
 
+# Session-scoped pipeline (populated by Claude via Linear MCP)
+.pipeline
+
 # macOS
 .DS_Store
 

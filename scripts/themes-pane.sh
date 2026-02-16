@@ -97,6 +97,13 @@ render() {
     return
   fi
 
+  # Validate content — must contain at least one THE- line (catch mid-write corruption)
+  if ! echo "$content" | grep -q 'THE-'; then
+    printf '\n'
+    printf "  ${DIM}Themes file updating, retrying...${RESET}\n"
+    return
+  fi
+
   # ── Pre-parse themes into parallel arrays ──────────────────────────────
   local t_keys=() t_titles=() t_urls=() t_dates=() t_labels=()
   local cur_key="" cur_title="" cur_url="" cur_date="" cur_labels=""
@@ -202,7 +209,7 @@ run() {
   else
     local last_mtime=""
     while true; do
-      sleep 5
+      sleep 2
       local current_mtime
       if [ -f "$THEMES_FILE" ]; then
         current_mtime=$(stat -f '%m' "$THEMES_FILE" 2>/dev/null || stat -c '%Y' "$THEMES_FILE" 2>/dev/null || echo "0")

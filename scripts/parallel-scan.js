@@ -883,16 +883,78 @@ async function main() {
   await writeDiscovery({
     status: 'progress',
     name: '—',
-    detail: `Diff: ${diff.new.length} new, ${diff.changed.length} changed — scoring...`,
+    detail: `Diff: ${diff.new.length} new, ${diff.changed.length} changed — ingesting network...`,
     time: timeHHMM(),
   });
+
+  // ── Phase 2b: Graph network ingestion (before scoring) ────────────────
+  // Ingest co-author and affiliation networks so proximity scoring has data.
+  let graphHandle = null; // { db, graph } — kept open through scoring
+  let graphAvailable = false;
+
+  try {
+    const graphMod = await import('./graph.js');
+    const { ingestNetwork } = await import('./ingest-network.js');
+    const { db, graph } = await graphMod.open();
+    await graphMod.ensure(graph);
+    graphHandle = { db, graph, close: graphMod.close };
+
+    const allNamedSignals = [...diff.new, ...diff.changed].filter(s => isRealName(s.name));
+    if (allNamedSignals.length > 0) {
+      const ingestStats = await ingestNetwork(graph, allNamedSignals);
+      process.stderr.write(`[graph] Ingested network: ${ingestStats.candidates} candidates, ${ingestStats.references} references, ${ingestStats.coauthorEdges} co-author edges, ${ingestStats.affiliationEdges} affiliation edges\n`);
+    }
+    graphAvailable = true;
+  } catch (e) {
+    process.stderr.write(`[graph] Network ingestion skipped: ${e.message}\n`);
+  }
+
+  // Import graph-score for proximity bonus (if graph is available)
+  let computeProximityBonus = null;
+  if (graphAvailable) {
+    try {
+      const mod = await import('./graph-score.js');
+      computeProximityBonus = mod.computeProximityBonus;
+    } catch (e) {
+      process.stderr.write(`[graph] Proximity scoring unavailable: ${e.message}\n`);
+      graphAvailable = false;
+    }
+  }
 
   // Score and write verdicts incrementally (one signal at a time)
   process.stderr.write('Scoring signals...\n');
   for (const sig of diff.new) {
-    // Score
+    // Score (flat rubric)
     const attrs = mapSignalToScoringAttrs(sig);
     const result = scoreSignal(attrs);
+    const flatScore = result.score;
+
+    // Graph proximity bonus (capped at +3, skipped for already-funded)
+    if (graphAvailable && computeProximityBonus && isRealName(sig.name)) {
+      const isAlreadyFunded = attrs.already_funded;
+      if (!isAlreadyFunded) {
+        try {
+          const slug = slugify(sig.name);
+          const proximity = await computeProximityBonus(graphHandle.graph, slug, { alreadyFunded: false });
+          if (proximity.bonus > 0) {
+            result.score += proximity.bonus;
+            result.breakdown.push({ key: 'graph_proximity', points: proximity.bonus });
+            // Recalculate strength band
+            if (result.score >= 8)      result.strength = 'strong';
+            else if (result.score >= 4) result.strength = 'medium';
+            else if (result.score >= 1) result.strength = 'weak';
+            else                        result.strength = 'pass';
+            process.stderr.write(`[graph] ${sig.name}: +${proximity.bonus} proximity (flat ${flatScore} → ${result.score})\n`);
+          }
+          sig._graph_bonus = proximity.bonus;
+          sig._graph_raw = proximity.raw;
+          sig._graph_explanation = proximity.explanation;
+        } catch (e) {
+          process.stderr.write(`[graph] Score error for ${sig.name}: ${e.message}\n`);
+        }
+      }
+    }
+
     sig._score = result.score;
     sig._scored_strength = result.strength;
     sig._score_breakdown = result.breakdown;
@@ -931,9 +993,33 @@ async function main() {
   }
 
   for (const sig of diff.changed) {
-    // Score changed signals too
+    // Score changed signals too (flat rubric + graph bonus)
     const attrs = mapSignalToScoringAttrs(sig);
     const result = scoreSignal(attrs);
+    const flatScore = result.score;
+
+    // Graph proximity bonus for changed signals too
+    if (graphAvailable && computeProximityBonus && isRealName(sig.name)) {
+      const isAlreadyFunded = attrs.already_funded;
+      if (!isAlreadyFunded) {
+        try {
+          const slug = slugify(sig.name);
+          const proximity = await computeProximityBonus(graphHandle.graph, slug, { alreadyFunded: false });
+          if (proximity.bonus > 0) {
+            result.score += proximity.bonus;
+            result.breakdown.push({ key: 'graph_proximity', points: proximity.bonus });
+            if (result.score >= 8)      result.strength = 'strong';
+            else if (result.score >= 4) result.strength = 'medium';
+            else if (result.score >= 1) result.strength = 'weak';
+            else                        result.strength = 'pass';
+          }
+          sig._graph_bonus = proximity.bonus;
+          sig._graph_raw = proximity.raw;
+          sig._graph_explanation = proximity.explanation;
+        } catch { /* graph errors are non-blocking */ }
+      }
+    }
+
     sig._score = result.score;
     sig._scored_strength = result.strength;
     sig._score_breakdown = result.breakdown;
@@ -1012,6 +1098,14 @@ async function main() {
         process.stderr.write('[lock] Released pipeline lock\n');
       }
     }
+  }
+
+  // Close graph handle (kept open through ingestion + scoring phases)
+  if (graphHandle) {
+    try {
+      await graphHandle.close(graphHandle.db);
+      process.stderr.write('[graph] Closed\n');
+    } catch { /* non-blocking */ }
   }
 
   // ── Phase 3: Cleanup ──────────────────────────────────────────────────

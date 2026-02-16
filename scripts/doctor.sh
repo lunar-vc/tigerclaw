@@ -5,6 +5,7 @@
 # Usage:
 #   tigerclaw doctor        (inside flox activate)
 #   bash scripts/doctor.sh  (standalone)
+#   bash scripts/doctor.sh --fix   (auto-repair what it can)
 #
 
 set -uo pipefail
@@ -20,11 +21,15 @@ RESET='\033[0m'
 PASS=0
 WARN=0
 FAIL=0
+FIX_MODE=false
+
+[[ "${1:-}" == "--fix" ]] && FIX_MODE=true
 
 pass() { printf "  ${GREEN}✔${RESET} %s\n" "$1"; PASS=$((PASS + 1)); }
 warn() { printf "  ${YELLOW}!${RESET} %s\n" "$1"; WARN=$((WARN + 1)); }
 fail() { printf "  ${RED}✘${RESET} %s\n" "$1"; FAIL=$((FAIL + 1)); }
 hint() { printf "    ${DIM}→ %s${RESET}\n" "$1"; }
+fixed() { printf "  ${GREEN}⟳${RESET} %s\n" "$1"; }
 
 # Resolve project root (script lives in scripts/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,7 +37,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 printf "\n${BOLD}Tigerclaw Doctor${RESET}\n\n"
 
-# ── 1. Flox ─────────────────────────────────────────────────────────────────
+# ── 1. Environment ─────────────────────────────────────────────────────────
 
 printf "${BOLD}Environment${RESET}\n"
 
@@ -65,84 +70,70 @@ else
   hint "Install: npm install -g @anthropic-ai/claude-code"
 fi
 
-if command -v jq >/dev/null 2>&1; then
-  pass "jq available"
-else
-  warn "jq not found (optional, used for JSON processing)"
-  hint "Run: flox activate  (provides jq)"
-fi
-
-if command -v rg >/dev/null 2>&1; then
-  pass "ripgrep available"
-else
-  warn "ripgrep not found (optional, used for fast search)"
-  hint "Run: flox activate  (provides ripgrep)"
-fi
+for tool in jq rg gh tmux; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    pass "$tool available"
+  else
+    warn "$tool not found"
+    hint "Run: flox activate"
+  fi
+done
 
 if command -v gh >/dev/null 2>&1; then
-  pass "GitHub CLI $(gh --version 2>/dev/null | head -1 | awk '{print $3}')"
   if gh auth status >/dev/null 2>&1; then
     pass "gh authenticated"
   else
     warn "gh not authenticated"
     hint "Run: gh auth login"
   fi
-else
-  fail "GitHub CLI (gh) not found"
-  hint "Run: flox activate  (provides gh)"
 fi
 
 if command -v gemini >/dev/null 2>&1; then
-  pass "Gemini CLI $(gemini --version 2>/dev/null)"
+  pass "Gemini CLI available"
 else
   warn "Gemini CLI not found (needed for LinkedIn/Reddit fetching)"
-  hint "Run: flox activate  (provides gemini-cli)"
+  hint "Run: flox activate"
 fi
 
-if command -v tmux >/dev/null 2>&1; then
-  pass "tmux available"
-else
-  warn "tmux not found (needed for gemini sessions)"
-  hint "Run: flox activate  (provides tmux)"
-fi
+# ── 2. API Keys ────────────────────────────────────────────────────────────
 
-# ── 2. API Keys ─────────────────────────────────────────────────────────────
-
-printf "\n${BOLD}API Keys (.env)${RESET}\n"
+printf "\n${BOLD}API Keys${RESET}\n"
 
 ENV_FILE="$PROJECT_ROOT/.env"
 
+if [ ! -f "$ENV_FILE" ]; then
+  if $FIX_MODE && [ -f "$PROJECT_ROOT/.env.example" ]; then
+    cp "$PROJECT_ROOT/.env.example" "$ENV_FILE"
+    fixed "Created .env from .env.example — fill in your keys"
+  else
+    fail ".env file not found"
+    hint "Run: cp .env.example .env  (or use --fix)"
+  fi
+fi
+
 if [ -f "$ENV_FILE" ]; then
-  pass ".env file exists"
+  set -a; source "$ENV_FILE" 2>/dev/null || true; set +a
 
-  # Source .env to check values
-  set -a
-  source "$ENV_FILE" 2>/dev/null || true
-  set +a
-
-  # Required keys
+  # BRAVE_API_KEY — required, validate with a test request
   if [ -n "${BRAVE_API_KEY:-}" ]; then
-    # Validate Brave key with a test request
-    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
       -H "Accept: application/json" \
       -H "X-Subscription-Token: $BRAVE_API_KEY" \
       "https://api.search.brave.com/res/v1/web/search?q=test&count=1" 2>/dev/null || echo "000")
-
-    if [ "$HTTP_STATUS" = "200" ]; then
-      pass "BRAVE_API_KEY set and valid"
-    elif [ "$HTTP_STATUS" = "401" ] || [ "$HTTP_STATUS" = "403" ]; then
-      fail "BRAVE_API_KEY set but invalid (HTTP $HTTP_STATUS)"
+    if [ "$HTTP" = "200" ]; then
+      pass "BRAVE_API_KEY valid"
+    elif [ "$HTTP" = "401" ] || [ "$HTTP" = "403" ]; then
+      fail "BRAVE_API_KEY invalid (HTTP $HTTP)"
       hint "Get a key at https://brave.com/search/api/"
-    elif [ "$HTTP_STATUS" = "000" ]; then
-      warn "BRAVE_API_KEY set but could not validate (network error)"
     else
-      warn "BRAVE_API_KEY set but got unexpected HTTP $HTTP_STATUS"
+      warn "BRAVE_API_KEY set (could not validate — HTTP $HTTP)"
     fi
   else
-    fail "BRAVE_API_KEY not set (required)"
+    fail "BRAVE_API_KEY not set (required for search)"
     hint "Get a key at https://brave.com/search/api/"
   fi
 
+  # HOOKDECK_ENDPOINT — required for signal routing
   if [ -n "${HOOKDECK_ENDPOINT:-}" ]; then
     pass "HOOKDECK_ENDPOINT set"
   else
@@ -151,100 +142,18 @@ if [ -f "$ENV_FILE" ]; then
   fi
 
   # Optional keys
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    pass "GITHUB_TOKEN set (higher rate limits)"
-  else
-    warn "GITHUB_TOKEN not set (optional — helps with GitHub rate limits)"
-  fi
-
-  if [ -n "${TWITTER_API_KEY:-}" ]; then
-    pass "TWITTER_API_KEY set (founder enrichment)"
-  else
-    warn "TWITTER_API_KEY not set (optional — enables Twitter enrichment)"
-  fi
-else
-  fail ".env file not found"
-  hint "Run: cp .env.example .env  then fill in your keys"
-fi
-
-# ── 3. Chrome / Puppeteer ───────────────────────────────────────────────────
-
-printf "\n${BOLD}Chrome / Puppeteer${RESET}\n"
-
-CHROME_FOUND=""
-
-# Check PUPPETEER_EXECUTABLE_PATH (set by flox activate)
-if [ -n "${PUPPETEER_EXECUTABLE_PATH:-}" ] && [ -x "${PUPPETEER_EXECUTABLE_PATH:-}" ]; then
-  CHROME_FOUND="$PUPPETEER_EXECUTABLE_PATH"
-fi
-
-# Check Puppeteer cache
-if [ -z "$CHROME_FOUND" ]; then
-  for candidate in \
-    "$HOME/.cache/puppeteer/chrome/mac_arm-"*/chrome-mac-arm64/Google\ Chrome\ for\ Testing.app/Contents/MacOS/Google\ Chrome\ for\ Testing \
-    "$HOME/.cache/puppeteer/chrome/mac-"*/chrome-mac-x64/Google\ Chrome\ for\ Testing.app/Contents/MacOS/Google\ Chrome\ for\ Testing \
-    "$HOME/.cache/puppeteer/chrome/linux-"*/chrome-linux64/chrome; do
-    if [ -x "$candidate" ] 2>/dev/null; then
-      CHROME_FOUND="$candidate"
-      break
+  for key in GITHUB_TOKEN TWITTER_API_KEY ANTHROPIC_API_KEY; do
+    if [ -n "${!key:-}" ]; then
+      pass "$key set"
+    else
+      warn "$key not set (optional)"
     fi
   done
 fi
 
-# Check system Chrome (macOS)
-if [ -z "$CHROME_FOUND" ]; then
-  SYSTEM_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-  if [ -x "$SYSTEM_CHROME" ]; then
-    CHROME_FOUND="$SYSTEM_CHROME"
-  fi
-fi
+# ── 3. MCP Servers ─────────────────────────────────────────────────────────
 
-# Check system chromium (Linux)
-if [ -z "$CHROME_FOUND" ] && command -v chromium >/dev/null 2>&1; then
-  CHROME_FOUND="$(command -v chromium)"
-fi
-if [ -z "$CHROME_FOUND" ] && command -v chromium-browser >/dev/null 2>&1; then
-  CHROME_FOUND="$(command -v chromium-browser)"
-fi
-
-if [ -n "$CHROME_FOUND" ]; then
-  pass "Chrome found: $(basename "$CHROME_FOUND")"
-else
-  fail "No Chrome/Chromium found (needed for Puppeteer MCP)"
-  hint "Install: npx puppeteer browsers install chrome"
-fi
-
-# ── 4. Agent Skills ─────────────────────────────────────────────────────────
-
-printf "\n${BOLD}Agent Skills${RESET}\n"
-
-SKILLS_DIR="$PROJECT_ROOT/.claude/skills/agent-skills"
-
-if [ -d "$SKILLS_DIR/.git" ]; then
-  pass "agent-skills repo cloned"
-
-  if [ -f "$SKILLS_DIR/latent-founder-signals/scripts/search.js" ]; then
-    pass "latent-founder-signals skill present"
-  else
-    fail "latent-founder-signals skill missing"
-    hint "Try: rm -rf $SKILLS_DIR && git clone https://github.com/lunar-vc/agent-skills.git $SKILLS_DIR"
-  fi
-
-  if [ -f "$SKILLS_DIR/hookdeck/scripts/post.js" ]; then
-    pass "hookdeck skill present"
-  else
-    fail "hookdeck skill missing"
-    hint "Try: rm -rf $SKILLS_DIR && git clone https://github.com/lunar-vc/agent-skills.git $SKILLS_DIR"
-  fi
-else
-  fail "agent-skills repo not cloned"
-  hint "Run: flox activate  (auto-clones on activation)"
-  hint "Or:  git clone https://github.com/lunar-vc/agent-skills.git $SKILLS_DIR"
-fi
-
-# ── 5. MCP Servers ──────────────────────────────────────────────────────────
-
-printf "\n${BOLD}MCP Configuration${RESET}\n"
+printf "\n${BOLD}MCP Servers${RESET}\n"
 
 MCP_FILE="$PROJECT_ROOT/.mcp.json"
 
@@ -252,75 +161,125 @@ if [ -f "$MCP_FILE" ]; then
   pass ".mcp.json exists"
 
   # Check each server is configured
-  for server in linear brave-search memory puppeteer; do
-    if jq -e ".mcpServers.\"$server\"" "$MCP_FILE" >/dev/null 2>&1; then
-      pass "$server server configured"
-    else
-      warn "$server server not configured in .mcp.json"
+  for server in linear brave-search puppeteer; do
+    if command -v jq >/dev/null 2>&1; then
+      if jq -e ".mcpServers.\"$server\"" "$MCP_FILE" >/dev/null 2>&1; then
+        pass "$server configured"
+      else
+        fail "$server not in .mcp.json"
+      fi
     fi
   done
+
+  # Linear MCP auth — HTTP/OAuth, managed by Claude Code
+  # Test by curling the MCP endpoint (unauthenticated returns 401)
+  if command -v jq >/dev/null 2>&1; then
+    LINEAR_URL=$(jq -r '.mcpServers.linear.url // empty' "$MCP_FILE" 2>/dev/null)
+    if [ -n "$LINEAR_URL" ]; then
+      LINEAR_HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$LINEAR_URL" 2>/dev/null || echo "000")
+      if [ "$LINEAR_HTTP" = "000" ]; then
+        warn "Linear MCP unreachable (network error)"
+      else
+        pass "Linear MCP endpoint reachable"
+        hint "Auth is managed by Claude Code — run /mcp in Claude Code if issues arise"
+      fi
+    fi
+  fi
 else
   fail ".mcp.json not found"
-  hint "This file should be checked into git — something is wrong with your clone"
+  hint "This file should be checked into git"
 fi
 
-# ── 6. Directories ──────────────────────────────────────────────────────────
+# ── 4. Chrome / Puppeteer ──────────────────────────────────────────────────
+
+printf "\n${BOLD}Chrome / Puppeteer${RESET}\n"
+
+CHROME_FOUND=""
+for candidate in \
+  "${PUPPETEER_EXECUTABLE_PATH:-}" \
+  "$HOME/.cache/puppeteer/chrome/mac_arm-"*/chrome-mac-arm64/Google\ Chrome\ for\ Testing.app/Contents/MacOS/Google\ Chrome\ for\ Testing \
+  "$HOME/.cache/puppeteer/chrome/mac-"*/chrome-mac-x64/Google\ Chrome\ for\ Testing.app/Contents/MacOS/Google\ Chrome\ for\ Testing \
+  "$HOME/.cache/puppeteer/chrome/linux-"*/chrome-linux64/chrome \
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; do
+  if [ -n "$candidate" ] && [ -x "$candidate" ] 2>/dev/null; then
+    CHROME_FOUND="$candidate"
+    break
+  fi
+done
+
+if [ -z "$CHROME_FOUND" ] && command -v chromium >/dev/null 2>&1; then
+  CHROME_FOUND="$(command -v chromium)"
+fi
+
+if [ -n "$CHROME_FOUND" ]; then
+  pass "Chrome found"
+else
+  warn "No Chrome/Chromium found (needed for Puppeteer MCP)"
+  hint "Install: npx puppeteer browsers install chrome"
+fi
+
+# ── 5. Agent Skills ────────────────────────────────────────────────────────
+
+printf "\n${BOLD}Agent Skills${RESET}\n"
+
+SKILLS_DIR="$PROJECT_ROOT/.claude/skills/agent-skills"
+
+if [ -d "$SKILLS_DIR/.git" ]; then
+  pass "agent-skills repo cloned"
+  [ -f "$SKILLS_DIR/latent-founder-signals/scripts/search.js" ] && pass "latent-founder-signals skill" || fail "latent-founder-signals missing"
+  [ -f "$SKILLS_DIR/hookdeck/scripts/post.js" ] && pass "hookdeck skill" || fail "hookdeck skill missing"
+else
+  if $FIX_MODE; then
+    git clone https://github.com/lunar-vc/agent-skills.git "$SKILLS_DIR" 2>/dev/null && fixed "Cloned agent-skills repo" || fail "Could not clone agent-skills"
+  else
+    fail "agent-skills repo not cloned"
+    hint "Run: flox activate  (auto-clones on activation)"
+  fi
+fi
+
+# ── 6. Project Structure ──────────────────────────────────────────────────
 
 printf "\n${BOLD}Project Structure${RESET}\n"
 
-if [ -d "$PROJECT_ROOT/research" ]; then
-  pass "research/ directory exists"
-else
-  warn "research/ directory missing"
-  hint "Run: mkdir -p research"
-fi
+for dir in research data/graph; do
+  if [ -d "$PROJECT_ROOT/$dir" ]; then
+    pass "$dir/ exists"
+  elif $FIX_MODE; then
+    mkdir -p "$PROJECT_ROOT/$dir" && fixed "Created $dir/"
+  else
+    warn "$dir/ missing"
+    hint "Run: mkdir -p $dir  (or use --fix)"
+  fi
+done
 
-if [ -d "$PROJECT_ROOT/.memory" ]; then
-  pass ".memory/ directory exists"
-else
-  warn ".memory/ directory missing (will be created on first use)"
-  hint "Run: mkdir -p .memory"
-fi
-
-if [ -f "$PROJECT_ROOT/CLAUDE.md" ]; then
-  pass "CLAUDE.md present"
-else
-  fail "CLAUDE.md missing — Claude Code won't have project instructions"
-fi
-
-if [ -d "$PROJECT_ROOT/data/graph" ]; then
-  pass "data/graph/ directory exists (FalkorDB)"
-else
-  warn "data/graph/ missing — run: node scripts/init-graph.js"
-  hint "mkdir -p data/graph && node scripts/init-graph.js"
-fi
+[ -f "$PROJECT_ROOT/CLAUDE.md" ] && pass "CLAUDE.md present" || fail "CLAUDE.md missing"
 
 if [ -d "$PROJECT_ROOT/node_modules/falkordblite" ]; then
-  pass "falkordblite installed (network graph)"
+  pass "falkordblite installed"
+elif $FIX_MODE; then
+  (cd "$PROJECT_ROOT" && npm install 2>/dev/null) && fixed "Ran npm install" || warn "npm install failed"
 else
   warn "falkordblite not in node_modules"
-  hint "Run: npm install (or check package.json)"
+  hint "Run: npm install  (or use --fix)"
 fi
 
-# ── Summary ─────────────────────────────────────────────────────────────────
+# ── Summary ────────────────────────────────────────────────────────────────
 
 printf "\n${BOLD}Summary${RESET}\n"
 printf "  ${GREEN}$PASS passed${RESET}  "
-if [ "$WARN" -gt 0 ]; then
-  printf "${YELLOW}$WARN warnings${RESET}  "
-fi
-if [ "$FAIL" -gt 0 ]; then
-  printf "${RED}$FAIL failed${RESET}  "
-fi
+[ "$WARN" -gt 0 ] && printf "${YELLOW}$WARN warnings${RESET}  "
+[ "$FAIL" -gt 0 ] && printf "${RED}$FAIL failed${RESET}  "
 printf "\n"
 
 if [ "$FAIL" -eq 0 ] && [ "$WARN" -eq 0 ]; then
   printf "\n  ${GREEN}${BOLD}All clear — ready to go.${RESET}\n\n"
   exit 0
 elif [ "$FAIL" -eq 0 ]; then
-  printf "\n  ${YELLOW}${BOLD}Functional with warnings.${RESET} Fix the items above for full capability.\n\n"
+  printf "\n  ${YELLOW}${BOLD}Functional with warnings.${RESET} Fix items above for full capability.\n\n"
   exit 0
 else
-  printf "\n  ${RED}${BOLD}Not ready.${RESET} Fix the failed items above before using Tigerclaw.\n\n"
+  printf "\n  ${RED}${BOLD}Not ready.${RESET} Fix failed items above."
+  $FIX_MODE || printf " Try ${BOLD}--fix${RESET} to auto-repair what's possible."
+  printf "\n\n"
   exit 1
 fi

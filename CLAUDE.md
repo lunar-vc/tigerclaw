@@ -395,10 +395,11 @@ Proactively find founders who may be starting something new.
 7. **Score each signal mechanically** using `node scripts/score-signal.js` — do not eyeball strength
 8. Post high-confidence signals to Hookdeck
 9. Save scan results to `research/YYYY-MM-DD-signal-scan.md`
-10. Create Linear issues in **DEAL** team (Triage) for each actionable signal (REACH_OUT, WATCH)
-11. **Run `persist-to-memory.js` for EVERY person with action REACH_OUT or WATCH** — not just the top signals, every watchlist candidate. The script handles dedup automatically. This is how we avoid losing track of people like Christine Lee across sessions.
-12. **Log scan summary to discoveries:** append a `summary` line to `.discoveries.jsonl` with the theme ID, result count, and breakdown: `{"status":"summary","name":"THE-XXXX","detail":"N watch · N pass","results":TOTAL,"time":"HH:MM"}`
-13. **Touch the theme done:** run `node scripts/touch-theme.js THE-XXXX` to stamp today's date and switch from "researching" to "today" in the pane.
+10. **Publish memo to Linear:** create a document under the theme issue using `create_document(title="THE-XXXX — Scan Title (YYYY-MM-DD)", content=<memo markdown>, issue="THE-XXXX")`. This attaches the full report to the theme in Linear so it's browsable alongside the issue.
+11. Create Linear issues in **DEAL** team (Triage) for each actionable signal (REACH_OUT, WATCH)
+12. **Run `persist-to-memory.js` for EVERY person with action REACH_OUT or WATCH** — not just the top signals, every watchlist candidate. The script handles dedup automatically. This is how we avoid losing track of people like Christine Lee across sessions.
+13. **Log scan summary to discoveries:** append a `summary` line to `.discoveries.jsonl` with the theme ID, result count, and breakdown: `{"status":"summary","name":"THE-XXXX","detail":"N watch · N pass","results":TOTAL,"time":"HH:MM"}`
+14. **Touch the theme done:** run `node scripts/touch-theme.js THE-XXXX` to stamp today's date and switch from "researching" to "today" in the pane.
 
 ### 5. Investment Theme Development
 
@@ -411,9 +412,10 @@ Develop and validate an investment thesis.
 5. Find proof points and counter-evidence
 6. List target companies and founders
 7. Save to `research/YYYY-MM-DD-theme-slug.md`
-8. Create Linear issue in **THE** team (Triage) with one-liner, primitive, action, and supporting links
-9. **Run `persist-to-memory.js`** for the theme and any identified founders/companies
-10. **Touch the theme done:** run `node scripts/touch-theme.js THE-XXXX` to stamp today's date
+8. **Publish memo to Linear:** create a document under the theme issue using `create_document(title="THE-XXXX — Theme Title (YYYY-MM-DD)", content=<memo markdown>, issue="THE-XXXX")`. This attaches the full report to the theme in Linear.
+9. Create Linear issue in **THE** team (Triage) with one-liner, primitive, action, and supporting links
+10. **Run `persist-to-memory.js`** for the theme and any identified founders/companies
+11. **Touch the theme done:** run `node scripts/touch-theme.js THE-XXXX` to stamp today's date
 
 ## Ralph Wiggum Patterns
 
@@ -686,17 +688,18 @@ On every session start, **immediately launch both startup tasks in the backgroun
 
 **1. Refresh the themes pane (background):**
 
-1. Fetch Live themes from Linear MCP: `list_issues(team="THE", state="Live", assignee="me")`
-2. For each theme, check the memory topic file (`memory/themes/<slug>.md`) for a `Last researched:` date
-3. Format each as:
+1. **Clean up stale states first:** run `node scripts/touch-theme.js --cleanup` — this replaces any leftover "researching" status from a crashed/interrupted previous session with the actual date from memory (or removes the line if no date exists). "Researching" is a transient state that must not survive across sessions.
+2. Fetch Live themes from Linear MCP: `list_issues(team="THE", state="Live", assignee="me")`
+3. For each theme, check the memory topic file (`memory/themes/<slug>.md`) for a `Last researched:` date
+4. Format each as:
    ```
      THE-XXXX  Title
        https://linear.app/tigerslug/issue/THE-XXXX
        researched: YYYY-MM-DD
        Labels (if any)
    ```
-   Omit the `researched:` line if no date is found in the memory file.
-4. Write to `.themes` (the themes pane watches this file and auto-renders — theme keys are clickable links to Linear, research age is shown per theme)
+   Omit the `researched:` line if no date is found in the memory file. **Never write `researched: researching`** — that status is only set live by `touch-theme.js` during an active scan.
+5. Write to `.themes` (the themes pane watches this file and auto-renders — theme keys are clickable links to Linear, research age is shown per theme)
 
 **2. Sync pipeline statuses from Linear (background):**
 

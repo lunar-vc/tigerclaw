@@ -187,6 +187,9 @@ render_entry() {
       [ -n "$detail" ] && printf " ${DIM}(%s)${RESET}" "$detail"
       printf '\n'
       ;;
+    progress)
+      printf "  ${time_prefix}${GREY}⋯ %s${RESET}\n" "$detail"
+      ;;
     *)
       printf "  ${time_prefix}${DIM}%s — %s${RESET}\n" "$name" "$detail"
       ;;

@@ -1,0 +1,13 @@
+{
+  "name": "tigerclaw",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "VC research analyst — pipeline, memory, and graph layer",
+  "scripts": {
+    "graph": "node scripts/graph.js"
+  },
+  "dependencies": {
+    "falkordblite": "^0.2.0"
+  }
+}

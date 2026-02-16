@@ -8,6 +8,7 @@
 // Usage:
 //   node scripts/score-signal.js '{"phd_defense_months":3,"new_repo":true,"left_faang":true}'
 //   echo '{"conference_top_venue":true}' | node scripts/score-signal.js
+//   node scripts/score-signal.js --graph '{"name":"Jane Doe","slug":"jane-doe","phd_defense":true}'
 //
 // Rubric:
 //   PhD defense in last 6 months ............. +3
@@ -22,12 +23,14 @@
 //   Academic-only pattern (no builder signal)  -2
 //   >90 days since last signal ............... -2
 //   Already funded (seed+) ................... -3
+//   Graph proximity bonus .................... +0 to +3 (with --graph)
 //
 // Strength bands:
 //   Strong: 8+  |  Medium: 4-7  |  Weak: 1-3  |  Pass: 0 or below
 
 async function readInput() {
-  const arg = process.argv[2];
+  const args = process.argv.slice(2).filter(a => !a.startsWith('--'));
+  const arg = args[0];
   if (arg) return JSON.parse(arg);
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
@@ -76,11 +79,56 @@ function scoreSignal(signal) {
 }
 
 async function main() {
+  const useGraph = process.argv.includes('--graph');
   const signal = await readInput();
   const result = scoreSignal(signal);
 
   // Include name if provided for context
   if (signal.name) result.name = signal.name;
+
+  // Graph proximity bonus (optional, skipped for already-funded)
+  if (useGraph) {
+    const isAlreadyFunded = signal.already_funded || signal.funded;
+    const slug = signal.slug || signal.name?.toLowerCase().normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    if (slug && !isAlreadyFunded) {
+      try {
+        const { open, close, ensure } = await import('./graph.js');
+        const { computeProximityBonus } = await import('./graph-score.js');
+        const { db, graph } = await open();
+        try {
+          await ensure(graph);
+          const proximity = await computeProximityBonus(graph, slug, { alreadyFunded: false });
+          if (proximity.bonus > 0) {
+            result.score += proximity.bonus;
+            result.breakdown.push({
+              label: `Graph proximity bonus`,
+              points: proximity.bonus,
+            });
+            // Recalculate strength band with bonus
+            if (result.score >= 8)      result.strength = 'strong';
+            else if (result.score >= 4) result.strength = 'medium';
+            else if (result.score >= 1) result.strength = 'weak';
+            else                        result.strength = 'pass';
+          }
+          result.graph_bonus = proximity.bonus;
+          result.graph_raw = proximity.raw;
+          result.graph_explanation = proximity.explanation;
+        } finally {
+          await close(db);
+        }
+      } catch (err) {
+        result.graph_bonus = 0;
+        result.graph_explanation = `Graph unavailable: ${err.message}`;
+      }
+    } else {
+      result.graph_bonus = 0;
+      result.graph_explanation = isAlreadyFunded
+        ? 'Skipped: already funded'
+        : 'Skipped: no slug';
+    }
+  }
 
   console.log(JSON.stringify(result, null, 2));
 }

@@ -162,6 +162,109 @@ node scripts/enrichment-cache.js prune
 
 **When to use:** Before making any enrichment API call (GitHub profile, Arxiv paper fetch, LinkedIn lookup), check the cache first. If `hit: true`, use the cached data. If `hit: false`, fetch and then `set` the result. This prevents re-fetching the same data when a person appears across multiple scans.
 
+### FalkorDB Graph Layer (`graph`)
+
+Embedded graph database (FalkorDBLite) for relationship queries across people, companies, and themes. Surfaces co-authorships, shared affiliations, founder networks, and theme adjacency that the flat pipeline index cannot represent.
+
+**Location:** `scripts/graph.js` (client), `scripts/extract-relationships.js` (relationship detector)
+**Persistence:** `data/graph/` (gitignored, rebuilt by seeding)
+**Requires:** `redis` (brew install redis), `libomp` (brew install libomp), `falkordblite` (npm)
+
+**Graph schema — 6 node labels:**
+- `:Person` (slug, name, action, linear, theme, type, last_seen)
+- `:Company` (slug, name, action, linear, theme, funded, last_seen)
+- `:Theme` (key, title, status, one_liner, primitive)
+- `:Investor` (slug, name) — populated as data is collected
+- `:FundingRound` (id, round_type, amount) — populated as data is collected
+- `:Customer` (slug, name) — populated as data is collected
+
+**Edge types:**
+- `(:Person)-[:HAS_EXPERTISE_IN]->(:Theme)` — person works in theme domain
+- `(:Company)-[:RELATED_TO_THEME]->(:Theme)` — company operates in theme
+- `(:Person)-[:WORKED_WITH]->(:Person)` — shared affiliation
+- `(:Person)-[:COAUTHORED]->(:Person)` — co-authored paper
+- `(:Person)-[:FOUNDED]->(:Company)` — founder relationship
+- `(:Person)-[:WORKED_AT]->(:Company)` — employment history
+- `(:Theme)-[:ADJACENT_TO]->(:Theme)` — related themes
+- `(:Investor)-[:INVESTED_IN]->(:Company)` — investment
+- `(:FundingRound)-[:ROUND_FOR]->(:Company)` — funding round
+- `(:Customer)-[:CUSTOMER_OF]->(:Company)` — customer relationship
+
+**CLI usage:**
+```bash
+# Seed graph from pipeline index (one-time bootstrap)
+node scripts/graph.js seed
+
+# Query all entities linked to a theme
+node scripts/graph.js query-theme THE-1810
+
+# Query a person's network (co-authors, affiliations, themes)
+node scripts/graph.js query-network natan-levy
+
+# Find founders with adjacent-theme expertise
+node scripts/graph.js query-adjacent THE-1810
+
+# Show all relationships for any entity (person, company, or theme key)
+node scripts/graph.js query-entity THE-1810
+
+# Run arbitrary Cypher (auto-detects read vs write)
+node scripts/graph.js cypher "MATCH (p:Person)-[:HAS_EXPERTISE_IN]->(t:Theme {key:'THE-1810'}) RETURN p.name, p.action"
+
+# Node and edge counts by type
+node scripts/graph.js stats
+
+# Extract relationships from memory files (shared affiliations, co-authorships, theme adjacency)
+node scripts/extract-relationships.js
+
+# Dry run (detect only, don't write)
+node scripts/extract-relationships.js --dry-run
+```
+
+**Library usage (from other scripts):**
+```javascript
+import { open, close, upsertNode, upsertEdge, ensure, query, roQuery } from './graph.js';
+const { db, graph } = await open();
+await ensure(graph);
+await upsertNode(graph, 'Person', { slug: 'jane-doe', name: 'Jane Doe', action: 'WATCH' });
+await upsertEdge(graph, 'Person', 'jane-doe', 'HAS_EXPERTISE_IN', 'Theme', 'THE-1810', { type: 'direct' });
+await close(db);
+```
+
+**Graph sync:** `persist-to-memory.js` automatically syncs to the graph on every persist. If FalkorDB fails to start, it logs a warning and continues — the three flat stores remain the source of truth.
+
+**When to use:** Use graph queries when you need to find connections across entities — co-author clusters, shared affiliations within a theme, adjacent-theme founders, or company-founder-theme triangles. The flat pipeline index tells you *what* is tracked; the graph tells you *how things connect*.
+
+### Ripple Alerts (`ripple`)
+
+Propagates a signal event through the graph to surface connected opportunities. When person X gets a new signal (departure, PhD defense, new repo), ripple walks 1-2 hops and re-scores every connected entity. Multi-path connections compound — two WATCH candidates sharing co-authorship + affiliation + a departure signal = a founding team forming.
+
+**Location:** `scripts/ripple.js`
+
+**Scoring:**
+- Edge weights: COAUTHORED=4, WORKED_WITH/FOUNDED/WORKED_AT=3, same theme=2, ADJACENT_TO=1
+- Multipliers: strong=1.5x, medium=1.0x, weak=0.7x
+- Multi-path bonus: +2 per additional connection path
+- Thresholds: ESCALATE=6+, REVIEW=3-5, NOTE=1-2
+
+**Events:** `phd_defense`, `departure`, `new_repo`, `funding`, `conference`, `paper`, `launch`, `hiring`, `pivot`, `exit`
+
+**Usage:**
+```bash
+# Person just defended PhD (strong signal)
+node scripts/ripple.js natan-levy --event phd_defense --strength strong
+
+# Person left company
+node scripts/ripple.js aaron-councilman --event departure --strength medium
+
+# JSON input
+node scripts/ripple.js '{"slug":"natan-levy","event":"new_repo","strength":"medium"}'
+
+# Write ESCALATE/REVIEW results to .discoveries.jsonl
+node scripts/ripple.js natan-levy --event departure --strength strong --write
+```
+
+**When to use:** Run ripple whenever a new signal arrives for a tracked person — departure, PhD defense, new GitHub repo, funding round. The output tells you which connected entities should be re-evaluated. ESCALATE results are strong candidates for upgrading from WATCH to REACH_OUT. Especially powerful when the graph has co-authorship and affiliation edges — two connections through different paths compound into a founding-team signal.
+
 ### Brave Search (MCP)
 
 Web search, news search, and AI summarization via Brave's official MCP server. More powerful than built-in WebSearch — supports freshness filtering, news-specific queries, image/video search, and result summarization.

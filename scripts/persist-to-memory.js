@@ -328,6 +328,51 @@ async function main() {
   await writeTopicFile(signal, slug);
   await updateMemoryIndex(signal, slug);
 
+  // Graph sync (additive — failures are non-blocking)
+  let graphSynced = false;
+  try {
+    const { open, close, upsertNode, upsertEdge, ensure } = await import('./graph.js');
+    const { db, graph } = await open();
+    try {
+      await ensure(graph);
+      if (signal.entity === 'person') {
+        await upsertNode(graph, 'Person', {
+          slug, name: signal.name, action: signal.action || 'WATCH',
+          linear: signal.linear || '', theme: signal.theme || '',
+          type: signal.type || 'latent_founder', last_seen: today(),
+        });
+        if (signal.theme) {
+          await upsertNode(graph, 'Theme', { key: signal.theme, title: signal.theme });
+          await upsertEdge(graph, 'Person', slug, 'HAS_EXPERTISE_IN', 'Theme', signal.theme,
+            { type: 'direct', confidence: '0.7' });
+        }
+      } else if (signal.entity === 'company') {
+        await upsertNode(graph, 'Company', {
+          slug, name: signal.name, action: signal.action || 'WATCH',
+          linear: signal.linear || '', theme: signal.theme || '',
+          funded: signal.funded === true ? 'true' : signal.funded === false ? 'false' : '',
+          last_seen: today(),
+        });
+        if (signal.theme) {
+          await upsertNode(graph, 'Theme', { key: signal.theme, title: signal.theme });
+          await upsertEdge(graph, 'Company', slug, 'RELATED_TO_THEME', 'Theme', signal.theme,
+            { relevance: 'core', confidence: '0.7' });
+        }
+      } else if (signal.entity === 'theme') {
+        await upsertNode(graph, 'Theme', {
+          key: signal.key, title: signal.title || '',
+          status: signal.status || '', one_liner: signal.one_liner || '',
+          primitive: signal.primitive || '',
+        });
+      }
+      graphSynced = true;
+    } finally {
+      await close(db);
+    }
+  } catch (e) {
+    console.error(JSON.stringify({ graph_warning: `Graph sync failed: ${e.message}` }));
+  }
+
   const entityLabel = signal.entity === 'person' ? signal.name
     : signal.entity === 'company' ? signal.name
     : signal.title;
@@ -337,7 +382,8 @@ async function main() {
     entity: signal.entity,
     slug,
     action: signal.action || (signal.entity === 'theme' ? signal.status : 'WATCH'),
-    message: `Persisted ${signal.entity} "${entityLabel}" to pipeline index, topic file, and memory index`
+    graphSynced,
+    message: `Persisted ${signal.entity} "${entityLabel}" to pipeline index, topic file, and memory index${graphSynced ? ' + graph' : ''}`
   }));
 }
 

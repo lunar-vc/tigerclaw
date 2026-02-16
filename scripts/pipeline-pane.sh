@@ -8,8 +8,8 @@
 #
 # Features:
 #   - DEAL-XXXX keys are OSC 8 clickable links
-#   - All triage and active deals shown (complete, not truncated)
-#   - Done count in header only
+#   - Shows Linear status per deal (Triage, In Progress, etc.)
+#   - Excludes completed, canceled, and disqualified deals
 #   - Aging warnings for WATCH/REACH_OUT with last_seen > 7 days
 #   - Theme depth: signals per theme, sorted by count
 #   - Watches both files via fswatch
@@ -58,8 +58,8 @@ render_deals() {
     return
   fi
 
-  # Validate — must contain at least one DEAL- line or a [Done] section
-  if ! echo "$content" | grep -qE '(DEAL-|completed deal)'; then
+  # Validate — must contain at least one DEAL- line
+  if ! echo "$content" | grep -qE 'DEAL-'; then
     printf '\n'
     printf "  ${DIM}Pipeline file updating, retrying...${RESET}\n"
     return
@@ -67,20 +67,17 @@ render_deals() {
 
   # ── Parse the .pipeline file ──────────────────────────────────────────
   local current_group=""
-  local triage_count=0 active_count=0 done_count=0
+  local triage_count=0 active_count=0
 
   # First pass: count deals per group
   while IFS= read -r line; do
     if [[ "$line" =~ ^\s*\[Triage\] ]]; then current_group="Triage"
     elif [[ "$line" =~ ^\s*\[In\ Progress\] ]]; then current_group="In Progress"
-    elif [[ "$line" =~ ^\s*\[Done\] ]]; then current_group="Done"
     elif [[ "$line" =~ (DEAL-[0-9]+) ]]; then
       case "$current_group" in
         Triage) ((triage_count++)) ;;
         "In Progress") ((active_count++)) ;;
       esac
-    elif [[ "$line" =~ ([0-9]+)\ completed ]]; then
-      done_count="${BASH_REMATCH[1]}"
     fi
   done <<< "$content"
 
@@ -89,7 +86,6 @@ render_deals() {
   local parts=()
   [ "$triage_count" -gt 0 ] && parts+=("${triage_count} triage")
   [ "$active_count" -gt 0 ] && parts+=("${active_count} active")
-  [ "$done_count" -gt 0 ] && parts+=("${done_count} done")
   if [ ${#parts[@]} -gt 0 ]; then
     local joined
     joined=$(IFS=' · '; echo "${parts[*]}")
@@ -138,11 +134,6 @@ render_deals() {
       current_group="In Progress"
       printf '\n'
       printf "  ${WHITE}Active${RESET} ${DIM}(%s)${RESET}\n" "$active_count"
-
-    elif [[ "$line" =~ ^\s*\[Done\] ]]; then
-      flush_deal
-      current_group="Done"
-      # Done deals are not listed — count is in header
 
     elif [[ "$line" =~ ^\ \ (DEAL-[0-9]+)\ \ (.+) ]]; then
       flush_deal

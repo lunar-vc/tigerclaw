@@ -92,18 +92,26 @@ function extractSubtitleFromTitle(title) {
   return '';
 }
 
+// ── Statuses to exclude entirely ────────────────────────────────────────────
+const EXCLUDED_STATUSES = new Set([
+  'done', 'completed', 'cancelled', 'canceled', 'disqualified',
+]);
+
 // ── Map Linear status to group ─────────────────────────────────────────────
 function statusGroup(status) {
   if (!status) return 'Triage';
   const s = status.toLowerCase();
+  if (EXCLUDED_STATUSES.has(s)) return null; // filtered out
   if (s === 'triage') return 'Triage';
-  if (s === 'done' || s === 'completed' || s === 'cancelled' || s === 'canceled') return 'Done';
   // Anything else (In Progress, Active, etc.) is "In Progress"
   return 'In Progress';
 }
 
-// ── Build enriched deals ───────────────────────────────────────────────────
+// ── Build enriched deals (excluding completed/canceled/disqualified) ───────
 const enriched = deals.map(d => {
+  const group = statusGroup(d.status);
+  if (group === null) return null; // excluded status
+
   const pipelineEntry = linearToEntry[d.id] || {};
   const theme = pipelineEntry.theme || null;
   const lastSeen = pipelineEntry.last_seen || null;
@@ -117,15 +125,16 @@ const enriched = deals.map(d => {
     name,
     subtitle,
     url: d.url || `https://linear.app/tigerslug/issue/${d.id}`,
-    group: statusGroup(d.status),
+    status: d.status || 'Triage',
+    group,
     theme,
     age,
     labels: d.labels || [],
   };
-});
+}).filter(Boolean);
 
 // ── Group deals ────────────────────────────────────────────────────────────
-const groups = { 'Triage': [], 'In Progress': [], 'Done': [] };
+const groups = { 'Triage': [], 'In Progress': [] };
 for (const deal of enriched) {
   if (!groups[deal.group]) groups[deal.group] = [];
   groups[deal.group].push(deal);
@@ -139,19 +148,8 @@ const lines = [];
 lines.push(`  refreshed: ${timeStr}`);
 lines.push('');
 
-for (const groupName of ['Triage', 'In Progress', 'Done']) {
+for (const groupName of ['Triage', 'In Progress']) {
   const groupDeals = groups[groupName] || [];
-
-  if (groupName === 'Done') {
-    // Done: just show count
-    if (groupDeals.length > 0) {
-      lines.push(`  [Done]`);
-      lines.push(`  ${groupDeals.length} completed deal${groupDeals.length !== 1 ? 's' : ''}`);
-      lines.push('');
-    }
-    continue;
-  }
-
   if (groupDeals.length === 0) continue;
 
   lines.push(`  [${groupName}]`);
@@ -161,8 +159,9 @@ for (const groupName of ['Triage', 'In Progress', 'Done']) {
     lines.push(`  ${deal.id}  ${deal.name}${subtitle}`);
     // Line 2: URL
     lines.push(`    ${deal.url}`);
-    // Line 3: theme · age
+    // Line 3: status · theme · age
     const parts = [];
+    if (deal.status) parts.push(deal.status);
     if (deal.theme) parts.push(deal.theme);
     if (deal.age !== null) parts.push(`${deal.age}d`);
     if (parts.length > 0) {
@@ -177,5 +176,4 @@ writeFileSync(PIPELINE_FILE, lines.join('\n') + '\n', 'utf8');
 // ── Print summary ──────────────────────────────────────────────────────────
 const triage = (groups['Triage'] || []).length;
 const active = (groups['In Progress'] || []).length;
-const done = (groups['Done'] || []).length;
-console.log(`Pipeline pane updated: ${triage} triage · ${active} active · ${done} done`);
+console.log(`Pipeline pane updated: ${triage} triage · ${active} active (excluded completed/canceled/disqualified)`);

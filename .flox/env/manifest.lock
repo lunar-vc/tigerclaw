@@ -6,11 +6,24 @@
       "bc": {
         "pkg-path": "bc"
       },
+      "chromium": {
+        "pkg-path": "chromium",
+        "systems": [
+          "x86_64-linux",
+          "aarch64-linux"
+        ]
+      },
       "curl": {
         "pkg-path": "curl"
       },
       "fswatch": {
         "pkg-path": "fswatch"
+      },
+      "gemini-cli": {
+        "pkg-path": "gemini-cli"
+      },
+      "gh": {
+        "pkg-path": "gh"
       },
       "git": {
         "pkg-path": "git"
@@ -36,7 +49,7 @@
       "PUPPETEER_SKIP_DOWNLOAD": "true"
     },
     "hook": {
-      "on-activate": "  # --- 1. Load .env ------------------------------------------------------\n  if [ -f \"$FLOX_ENV_PROJECT/.env\" ]; then\n    set -a\n    source \"$FLOX_ENV_PROJECT/.env\"\n    set +a\n    echo \"  Loaded .env\"\n  else\n    echo \"  WARNING: No .env file found — copy .env.example to .env and fill in your keys\"\n  fi\n\n  # --- 2. Detect Chrome / Chromium for Puppeteer --------------------------\n  CHROME_FOUND=\"\"\n\n  # Linux: check if Flox provided chromium\n  if command -v chromium >/dev/null 2>&1; then\n    export PUPPETEER_EXECUTABLE_PATH=\"$(command -v chromium)\"\n    CHROME_FOUND=\"chromium (Flox)\"\n  fi\n\n  # macOS: check Puppeteer cache\n  if [ -z \"$CHROME_FOUND\" ]; then\n    PUPPETEER_CACHE=\"$HOME/.cache/puppeteer\"\n    CHROME_MAC=\"$PUPPETEER_CACHE/chrome/mac_arm-*/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing\"\n    CHROME_MAC_X86=\"$PUPPETEER_CACHE/chrome/mac-*/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing\"\n    for candidate in $CHROME_MAC $CHROME_MAC_X86; do\n      if [ -x \"$candidate\" ]; then\n        export PUPPETEER_EXECUTABLE_PATH=\"$candidate\"\n        CHROME_FOUND=\"Puppeteer cache\"\n        break\n      fi\n    done\n  fi\n\n  # Fallback: system Chrome on macOS\n  if [ -z \"$CHROME_FOUND\" ]; then\n    SYSTEM_CHROME=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\"\n    if [ -x \"$SYSTEM_CHROME\" ]; then\n      export PUPPETEER_EXECUTABLE_PATH=\"$SYSTEM_CHROME\"\n      CHROME_FOUND=\"system Chrome\"\n    fi\n  fi\n\n  if [ -n \"$CHROME_FOUND\" ]; then\n    echo \"  Chrome: $CHROME_FOUND\"\n  else\n    echo \"  WARNING: No Chrome found. Run: npx puppeteer browsers install chrome\"\n  fi\n\n  # --- 3. Clone / update agent-skills ------------------------------------\n  SKILLS_TARGET=\"$FLOX_ENV_PROJECT/.claude/skills/agent-skills\"\n  if [ -d \"$SKILLS_TARGET/.git\" ]; then\n    git -C \"$SKILLS_TARGET\" pull --quiet 2>/dev/null && echo \"  Agent skills: updated\" || echo \"  Agent skills: present (pull failed, offline?)\"\n  else\n    mkdir -p \"$(dirname \"$SKILLS_TARGET\")\"\n    if git clone --quiet https://github.com/lunar-vc/agent-skills.git \"$SKILLS_TARGET\" 2>/dev/null; then\n      echo \"  Agent skills: cloned\"\n    else\n      echo \"  WARNING: Could not clone agent-skills (check network / GITHUB_TOKEN)\"\n    fi\n  fi\n\n  # --- 4. Ensure research directory exists --------------------------------\n  mkdir -p \"$FLOX_ENV_PROJECT/research\"\n\n  # --- 5. Create tigerclaw launcher in env bin ----------------------------\n  mkdir -p \"$FLOX_ENV_CACHE/bin\"\n  cat > \"$FLOX_ENV_CACHE/bin/tigerclaw\" << LAUNCHER\n#!/usr/bin/env bash\nexec bash \"$FLOX_ENV_PROJECT/scripts/tigerclaw-launch.sh\" \"\\$@\"\nLAUNCHER\n  chmod +x \"$FLOX_ENV_CACHE/bin/tigerclaw\"\n  export PATH=\"$FLOX_ENV_CACHE/bin:$PATH\"\n\n  # --- 6. Export dynamic env vars -----------------------------------------\n  export TIGERCLAW_HOME=\"$FLOX_ENV_PROJECT\"\n  export SKILLS_DIR=\"$FLOX_ENV_PROJECT/.claude/skills/agent-skills\"\n  export RESEARCH_DIR=\"$FLOX_ENV_PROJECT/research\"\n\n  # --- 7. Post-activate validation ------------------------------------------\n  TC_WARNINGS=0\n  if [ ! -f \"$FLOX_ENV_PROJECT/.env\" ]; then\n    TC_WARNINGS=$((TC_WARNINGS + 1))\n  fi\n  if [ -z \"$CHROME_FOUND\" ]; then\n    TC_WARNINGS=$((TC_WARNINGS + 1))\n  fi\n  if [ ! -d \"$FLOX_ENV_PROJECT/.claude/skills/agent-skills/.git\" ]; then\n    TC_WARNINGS=$((TC_WARNINGS + 1))\n  fi\n\n  # --- 8. Welcome banner (in hook to avoid p10k instant prompt conflict) ---\n  ORANGE='\\033[38;5;208m'\n  AMBER='\\033[38;5;214m'\n  YELLOW='\\033[38;5;220m'\n  WHITE='\\033[1;37m'\n  BOLD='\\033[1m'\n  DIM='\\033[2m'\n  GREY='\\033[38;5;240m'\n  RST='\\033[0m'\n\n  echo \"\"\n  source \"$FLOX_ENV_PROJECT/scripts/logo.sh\"\n  echo \"\"\n  printf \"  Node : $(node --version)\\n\"\n  echo \"\"\n  printf \"  ${WHITE}Quick start${RST}\\n\"\n  printf \"  ${DIM}tigerclaw${RST}               — Launch tmux\\n\"\n  printf \"  ${DIM}tigerclaw --new${RST}         — Spawn additional session\\n\"\n  printf \"  ${DIM}tigerclaw-doctor${RST}        — Check environment health\\n\"\n  printf \"  ${DIM}skills${RST}                  — List available agent skills\\n\"\n  printf \"  ${DIM}search-founders <query>${RST} — Run latent founder scan\\n\"\n  echo \"\"\n  if [ \"$TC_WARNINGS\" -gt 0 ]; then\n    printf \"  ${YELLOW}⚠ $TC_WARNINGS issue(s) detected — run tigerclaw-doctor${RST}\\n\"\n    echo \"\"\n  fi\n"
+      "on-activate": "  # --- 1. Load .env ------------------------------------------------------\n  if [ -f \"$FLOX_ENV_PROJECT/.env\" ]; then\n    set -a\n    source \"$FLOX_ENV_PROJECT/.env\"\n    set +a\n    echo \"  Loaded .env\"\n  else\n    echo \"  WARNING: No .env file found — copy .env.example to .env and fill in your keys\"\n  fi\n\n  # --- 2. Detect Chrome / Chromium for Puppeteer --------------------------\n  CHROME_FOUND=\"\"\n\n  # Linux: check if Flox provided chromium\n  if command -v chromium >/dev/null 2>&1; then\n    export PUPPETEER_EXECUTABLE_PATH=\"$(command -v chromium)\"\n    CHROME_FOUND=\"chromium (Flox)\"\n  fi\n\n  # macOS: check Puppeteer cache\n  if [ -z \"$CHROME_FOUND\" ]; then\n    PUPPETEER_CACHE=\"$HOME/.cache/puppeteer\"\n    CHROME_MAC=\"$PUPPETEER_CACHE/chrome/mac_arm-*/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing\"\n    CHROME_MAC_X86=\"$PUPPETEER_CACHE/chrome/mac-*/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing\"\n    for candidate in $CHROME_MAC $CHROME_MAC_X86; do\n      if [ -x \"$candidate\" ]; then\n        export PUPPETEER_EXECUTABLE_PATH=\"$candidate\"\n        CHROME_FOUND=\"Puppeteer cache\"\n        break\n      fi\n    done\n  fi\n\n  # Fallback: system Chrome on macOS\n  if [ -z \"$CHROME_FOUND\" ]; then\n    SYSTEM_CHROME=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\"\n    if [ -x \"$SYSTEM_CHROME\" ]; then\n      export PUPPETEER_EXECUTABLE_PATH=\"$SYSTEM_CHROME\"\n      CHROME_FOUND=\"system Chrome\"\n    fi\n  fi\n\n  if [ -n \"$CHROME_FOUND\" ]; then\n    echo \"  Chrome: $CHROME_FOUND\"\n  else\n    echo \"  WARNING: No Chrome found. Run: npx puppeteer browsers install chrome\"\n  fi\n\n  # --- 3. Install npm dependencies if needed ----------------------------\n  if [ -f \"$FLOX_ENV_PROJECT/package.json\" ] && [ ! -d \"$FLOX_ENV_PROJECT/node_modules\" ]; then\n    echo \"  Installing npm dependencies...\"\n    (cd \"$FLOX_ENV_PROJECT\" && npm install --no-fund --no-audit --silent 2>/dev/null) && echo \"  npm: installed\" || echo \"  WARNING: npm install failed\"\n  elif [ -d \"$FLOX_ENV_PROJECT/node_modules\" ]; then\n    echo \"  npm: node_modules present\"\n  fi\n\n  # --- 4. Clone / update agent-skills ------------------------------------\n  SKILLS_TARGET=\"$FLOX_ENV_PROJECT/.claude/skills/agent-skills\"\n  if [ -d \"$SKILLS_TARGET/.git\" ]; then\n    git -C \"$SKILLS_TARGET\" pull --quiet 2>/dev/null && echo \"  Agent skills: updated\" || echo \"  Agent skills: present (pull failed, offline?)\"\n  else\n    mkdir -p \"$(dirname \"$SKILLS_TARGET\")\"\n    if git clone --quiet https://github.com/lunar-vc/agent-skills.git \"$SKILLS_TARGET\" 2>/dev/null; then\n      echo \"  Agent skills: cloned\"\n    else\n      echo \"  WARNING: Could not clone agent-skills (check network / GITHUB_TOKEN)\"\n    fi\n  fi\n\n  # --- 5. Ensure research + data directories exist -----------------------\n  mkdir -p \"$FLOX_ENV_PROJECT/research\"\n  mkdir -p \"$FLOX_ENV_PROJECT/data/graph\"\n\n  # --- 6. Create tigerclaw launcher in env bin ----------------------------\n  mkdir -p \"$FLOX_ENV_CACHE/bin\"\n  cat > \"$FLOX_ENV_CACHE/bin/tigerclaw\" << LAUNCHER\n#!/usr/bin/env bash\nexec bash \"$FLOX_ENV_PROJECT/scripts/tigerclaw-launch.sh\" \"\\$@\"\nLAUNCHER\n  chmod +x \"$FLOX_ENV_CACHE/bin/tigerclaw\"\n  export PATH=\"$FLOX_ENV_CACHE/bin:$PATH\"\n\n  # --- 7. Export dynamic env vars -----------------------------------------\n  export TIGERCLAW_HOME=\"$FLOX_ENV_PROJECT\"\n  export SKILLS_DIR=\"$FLOX_ENV_PROJECT/.claude/skills/agent-skills\"\n  export RESEARCH_DIR=\"$FLOX_ENV_PROJECT/research\"\n\n  # --- 8. Post-activate validation ------------------------------------------\n  TC_WARNINGS=0\n  if [ ! -f \"$FLOX_ENV_PROJECT/.env\" ]; then\n    TC_WARNINGS=$((TC_WARNINGS + 1))\n  fi\n  if [ -z \"$CHROME_FOUND\" ]; then\n    TC_WARNINGS=$((TC_WARNINGS + 1))\n  fi\n  if [ ! -d \"$FLOX_ENV_PROJECT/.claude/skills/agent-skills/.git\" ]; then\n    TC_WARNINGS=$((TC_WARNINGS + 1))\n  fi\n  # Check gh auth\n  if ! gh auth status >/dev/null 2>&1; then\n    TC_WARNINGS=$((TC_WARNINGS + 1))\n  fi\n  # Check gemini auth\n  if ! command -v gemini >/dev/null 2>&1; then\n    TC_WARNINGS=$((TC_WARNINGS + 1))\n  fi\n\n  # --- 9. Welcome banner (in hook to avoid p10k instant prompt conflict) ---\n  ORANGE='\\033[38;5;208m'\n  AMBER='\\033[38;5;214m'\n  YELLOW='\\033[38;5;220m'\n  WHITE='\\033[1;37m'\n  BOLD='\\033[1m'\n  DIM='\\033[2m'\n  GREY='\\033[38;5;240m'\n  RST='\\033[0m'\n\n  echo \"\"\n  source \"$FLOX_ENV_PROJECT/scripts/logo.sh\"\n  echo \"\"\n  printf \"  Node   : $(node --version)\\n\"\n  printf \"  gh     : $(gh --version 2>/dev/null | head -1 | awk '{print $3}' || echo 'not found')\\n\"\n  printf \"  gemini : $(gemini --version 2>/dev/null || echo 'not found')\\n\"\n  echo \"\"\n  printf \"  ${WHITE}Quick start${RST}\\n\"\n  printf \"  ${DIM}tigerclaw${RST}               — Launch tmux\\n\"\n  printf \"  ${DIM}tigerclaw --new${RST}         — Spawn additional session\\n\"\n  printf \"  ${DIM}tigerclaw-doctor${RST}        — Check environment health\\n\"\n  printf \"  ${DIM}skills${RST}                  — List available agent skills\\n\"\n  printf \"  ${DIM}search-founders <query>${RST} — Run latent founder scan\\n\"\n  echo \"\"\n  if [ \"$TC_WARNINGS\" -gt 0 ]; then\n    printf \"  ${YELLOW}⚠ $TC_WARNINGS issue(s) detected — run tigerclaw-doctor${RST}\\n\"\n    echo \"\"\n  fi\n"
     },
     "profile": {
       "common": "  # Aliases\n  alias skills=\"ls -1 $FLOX_ENV_PROJECT/.claude/skills/agent-skills/\"\n  alias search-founders=\"node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/latent-founder-signals/scripts/search.js\"\n  alias post-hookdeck=\"node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/hookdeck/scripts/post.js\"\n  alias tigerclaw-doctor=\"bash $FLOX_ENV_PROJECT/scripts/doctor.sh\"\n  alias tigerclaw-new=\"bash $FLOX_ENV_PROJECT/scripts/tigerclaw-launch.sh --new\"\n  log-discovery() { printf \"[$(date +%H:%M)] %s\\n\" \"$*\" >> \"$FLOX_ENV_PROJECT/.discoveries\"; }\n"
@@ -135,6 +148,68 @@
       ],
       "outputs": {
         "out": "/nix/store/m2gxc0sb4rkpnqhz541pp1p6g6w31gm3-bc-1.08.2"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "chromium",
+      "broken": false,
+      "derivation": "/nix/store/pxmj29kirqwxiisylyx5icdc75sxpng5-chromium-144.0.7559.109.drv",
+      "description": "Open source web browser from Google",
+      "install_id": "chromium",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "chromium-144.0.7559.109",
+      "pname": "chromium",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T05:05:23.074338Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "144.0.7559.109",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/d17n64c121h6sa2vqrkld9qb3ml80fl1-chromium-144.0.7559.109",
+        "sandbox": "/nix/store/q8wlf1ysx5dm8sryybl4smfcqj842x61-chromium-144.0.7559.109-sandbox"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "chromium",
+      "broken": false,
+      "derivation": "/nix/store/dn66qy2v64k3y4s7sh5p4ykyq4krbvb7-chromium-144.0.7559.109.drv",
+      "description": "Open source web browser from Google",
+      "install_id": "chromium",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "chromium-144.0.7559.109",
+      "pname": "chromium",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T06:05:45.936745Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "144.0.7559.109",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/pv3syvk964mxhljzd9i7vs57fjac7417-chromium-144.0.7559.109",
+        "sandbox": "/nix/store/xi6209zxaglwhixid54xk316y0xw0s5n-chromium-144.0.7559.109-sandbox"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -336,6 +411,186 @@
       ],
       "outputs": {
         "out": "/nix/store/qkvz41s6p3rjbc7mxp7xlnrzw7smsq9s-fswatch-1.18.3"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gemini-cli",
+      "broken": false,
+      "derivation": "/nix/store/q8xamwgs6z8dya0bmi6f0ykil3zdd888-gemini-cli-0.26.0.drv",
+      "description": "AI agent that brings the power of Gemini directly into your terminal",
+      "install_id": "gemini-cli",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "gemini-cli-0.26.0",
+      "pname": "gemini-cli",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T04:35:55.453275Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.26.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/0qb39yr0clrm5z0ki8wm2abqgcrz4pyh-gemini-cli-0.26.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gemini-cli",
+      "broken": false,
+      "derivation": "/nix/store/c8rc1gi57nakd0xllapk7j4ddd2cf0d1-gemini-cli-0.26.0.drv",
+      "description": "AI agent that brings the power of Gemini directly into your terminal",
+      "install_id": "gemini-cli",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "gemini-cli-0.26.0",
+      "pname": "gemini-cli",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T05:05:24.234492Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.26.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/d92d0bd7qzd0ghvzcczac2wrrqr7dl54-gemini-cli-0.26.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gemini-cli",
+      "broken": false,
+      "derivation": "/nix/store/nnha1gv2xqpdbiqbjn9i8zsz1r8hwmyp-gemini-cli-0.26.0.drv",
+      "description": "AI agent that brings the power of Gemini directly into your terminal",
+      "install_id": "gemini-cli",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "gemini-cli-0.26.0",
+      "pname": "gemini-cli",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T06:05:47.228510Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.26.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/hg1fh1idinmvp4aic8wkdrq829vh19zp-gemini-cli-0.26.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gh",
+      "broken": false,
+      "derivation": "/nix/store/8a3nidwpvc9n1bjva4dmw7i7mjj8fky7-gh-2.86.0.drv",
+      "description": "GitHub CLI tool",
+      "install_id": "gh",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "gh-2.86.0",
+      "pname": "gh",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T04:35:55.478899Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.86.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/y207r5sjcd81gfnsxxssgiiiwl6mcg6f-gh-2.86.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gh",
+      "broken": false,
+      "derivation": "/nix/store/i2nsxinz9xpj7646ladcp57lxl69jj6w-gh-2.86.0.drv",
+      "description": "GitHub CLI tool",
+      "install_id": "gh",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "gh-2.86.0",
+      "pname": "gh",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T05:05:24.274694Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.86.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/zx4plaf0z1yv06wdhxxhpbm7kmslm2r8-gh-2.86.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gh",
+      "broken": false,
+      "derivation": "/nix/store/vnv704j0yfg1lg30jrbf0hdnzpkygvv5-gh-2.86.0.drv",
+      "description": "GitHub CLI tool",
+      "install_id": "gh",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "gh-2.86.0",
+      "pname": "gh",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T06:05:47.268990Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.86.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/xf3rb2kmk19092b1pf50ag0fsj2f6hpa-gh-2.86.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -751,6 +1006,8 @@
       "version": "3.6a",
       "outputs_to_install": [
         "man",
+        "man",
+        "out",
         "out"
       ],
       "outputs": {

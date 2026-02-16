@@ -115,6 +115,9 @@ export async function ingestNetwork(graph, signals, opts = {}) {
     const slug = slugify(sig.name);
     candidateSlugs.add(slug);
 
+    // Store work keywords for theme discovery clustering
+    const workKeywords = (sig._work_keywords || []).join(',');
+
     if (!dryRun) {
       await upsertNode(graph, 'Person', {
         slug,
@@ -122,6 +125,7 @@ export async function ingestNetwork(graph, signals, opts = {}) {
         action: '',  // not scored yet — will be set by persist later
         theme: (sig._themes && sig._themes[0]) || '',
         type: 'scan_candidate',
+        work_keywords: workKeywords,
         last_seen: new Date().toISOString().split('T')[0],
       });
     }
@@ -135,15 +139,18 @@ export async function ingestNetwork(graph, signals, opts = {}) {
       candidatesByAffiliation.get(aff).push({ slug, name: sig.name });
     }
 
-    // Theme edge
-    const theme = (sig._themes && sig._themes[0]) || null;
-    if (theme && !dryRun) {
-      try {
-        await upsertEdge(graph, 'Person', slug, 'HAS_EXPERTISE_IN', 'Theme', theme, {
-          type: 'scan', confidence: '0.5',
-        });
-        stats.themeEdges++;
-      } catch { /* theme node may not exist yet */ }
+    // Theme edges — use actual relevance scores from classification
+    const themeRelevance = sig._theme_relevance || {};
+    for (const theme of (sig._themes || [])) {
+      const relevance = themeRelevance[theme] ?? 0.5;
+      if (!dryRun) {
+        try {
+          await upsertEdge(graph, 'Person', slug, 'HAS_EXPERTISE_IN', 'Theme', theme, {
+            type: 'scan', confidence: String(relevance),
+          });
+          stats.themeEdges++;
+        } catch { /* theme node may not exist yet */ }
+      }
     }
   }
 

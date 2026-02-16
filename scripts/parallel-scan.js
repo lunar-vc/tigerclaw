@@ -305,6 +305,32 @@ function extractThemeKeywords(title) {
     .filter(w => w.length > 2 && !STOPWORDS.has(w));
 }
 
+const WORK_STOPWORDS = new Set([
+  ...STOPWORDS,
+  'research', 'study', 'paper', 'novel', 'approach', 'method', 'system',
+  'framework', 'tool', 'project', 'work', 'building', 'developing',
+  'analysis', 'design', 'implementation', 'application', 'model',
+  'data', 'learning', 'deep', 'machine', 'neural', 'network',
+  'university', 'professor', 'student', 'phd', 'lab', 'group',
+  'first', 'author', 'paper', 'published', 'conference',
+]);
+
+function mergeRelevance(a, b) {
+  const merged = { ...(a || {}) };
+  for (const [key, val] of Object.entries(b || {})) {
+    merged[key] = Math.max(merged[key] || 0, val);
+  }
+  return merged;
+}
+
+function extractWorkKeywords(work, primitive) {
+  const text = `${work} ${primitive}`.toLowerCase();
+  return text
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !WORK_STOPWORDS.has(w));
+}
+
 function classifySignalToThemes(signal, themesInDomain) {
   if (!themesInDomain || themesInDomain.length === 0) return [];
 
@@ -474,9 +500,13 @@ function mergeResults(domainResults, domainToThemes) {
   for (const { domain, signals } of domainResults) {
     for (const sig of signals) {
       sig._search_domain = sig._search_domain || domain;
-      // Classify signal against themes in its domain
+      // Classify signal against themes in its domain (preserve relevance scores)
       const themes = domainToThemes[domain] || [];
-      sig._themes = classifySignalToThemes(sig, themes).map(m => m.key);
+      const themeMatches = classifySignalToThemes(sig, themes);
+      sig._themes = themeMatches.map(m => m.key);
+      sig._theme_relevance = Object.fromEntries(themeMatches.map(m => [m.key, m.relevance]));
+      // Extract work keywords for theme discovery clustering
+      sig._work_keywords = extractWorkKeywords(sig.work || '', sig.primitive || '');
       allSignals.push(sig);
     }
   }
@@ -490,9 +520,10 @@ function mergeResults(domainResults, domainToThemes) {
       byUrl.set(url, sig);
     } else {
       const existing = byUrl.get(url);
-      // Merge themes from duplicate
+      // Merge themes + relevance from duplicate
       const merged = new Set([...(existing._themes || []), ...(sig._themes || [])]);
       existing._themes = [...merged];
+      existing._theme_relevance = mergeRelevance(existing._theme_relevance, sig._theme_relevance);
     }
   }
 
@@ -510,14 +541,18 @@ function mergeResults(domainResults, domainToThemes) {
       const existRank = strengthRank[existing.signal_strength] || 0;
       const newRank = strengthRank[sig.signal_strength] || 0;
       if (newRank > existRank) {
-        // New signal is stronger — keep it, merge themes from existing
+        // New signal is stronger — keep it, merge themes + relevance from existing
         const merged = new Set([...(sig._themes || []), ...(existing._themes || [])]);
         sig._themes = [...merged];
+        sig._theme_relevance = mergeRelevance(sig._theme_relevance, existing._theme_relevance);
+        sig._work_keywords = [...new Set([...(sig._work_keywords || []), ...(existing._work_keywords || [])])];
         byName.set(name, sig);
       } else {
-        // Existing is stronger — merge themes from new signal
+        // Existing is stronger — merge themes + relevance from new signal
         const merged = new Set([...(existing._themes || []), ...(sig._themes || [])]);
         existing._themes = [...merged];
+        existing._theme_relevance = mergeRelevance(existing._theme_relevance, sig._theme_relevance);
+        existing._work_keywords = [...new Set([...(existing._work_keywords || []), ...(sig._work_keywords || [])])];
       }
     }
   }
@@ -626,6 +661,8 @@ function parseArgs(argv) {
     geo: null,
     geoIncludeUnknown: false,
     persist: true,
+    discover: true,
+    createThemes: false,
     dryRun: false,
   };
 
@@ -635,6 +672,9 @@ function parseArgs(argv) {
     else if (arg === '--no-enrich')     opts.enrich = false;
     else if (arg === '--persist')       opts.persist = true;
     else if (arg === '--no-persist')    opts.persist = false;
+    else if (arg === '--discover')      opts.discover = true;
+    else if (arg === '--no-discover')   opts.discover = false;
+    else if (arg === '--create-themes') opts.createThemes = true;
     else if (arg === '--dry-run')       opts.dryRun = true;
     else if (arg === '--geo-include-unknown') opts.geoIncludeUnknown = true;
     else if (arg.startsWith('--domains='))
@@ -1057,6 +1097,49 @@ async function main() {
     }
   }
 
+  // ── Phase 2e: Theme Discovery ──────────────────────────────────────────
+  let themeProposals = [];
+
+  if (opts.discover && graphAvailable) {
+    try {
+      const { discoverThemes } = await import('./discover-themes.js');
+      const allScored = [...diff.new, ...diff.changed];
+      const { proposals, stats: discoverStats } = await discoverThemes(graphHandle.graph, allScored, {
+        strategy: 'all',
+        minCluster: 3,
+      });
+      themeProposals = proposals;
+
+      if (proposals.length > 0) {
+        process.stderr.write(`[discover] Found ${proposals.length} theme proposal(s): ${discoverStats.orphan_clusters} orphan clusters, ${discoverStats.bridges} bridges, ${discoverStats.anomalies} affiliation anomalies\n`);
+
+        for (const proposal of proposals) {
+          // Log to discoveries pane
+          const status = proposal.confidence === 'weak' ? 'watching' : 'found';
+          await writeDiscovery({
+            status,
+            name: proposal.suggested_title.replace('[Auto-discovered] ', '').replace('[Investigate] ', ''),
+            detail: `THEME PROPOSAL (${proposal.source}) — ${proposal.suggested_primitive}`,
+            strength: proposal.confidence === 'strong' ? 'STRONG' : 'MEDIUM',
+            time: timeHHMM(),
+          });
+        }
+
+        // Create Linear issues if --create-themes flag is set
+        if (opts.createThemes) {
+          process.stderr.write(`[discover] Creating ${proposals.filter(p => p.action === 'CREATE_TRIAGE').length} Linear theme issues...\n`);
+          // Linear creation is handled by the calling agent (Claude) after the scan
+          // because it requires MCP tools not available from this script.
+          // The proposals are included in the scan output JSON for the agent to act on.
+        }
+      } else {
+        process.stderr.write('[discover] No theme proposals found\n');
+      }
+    } catch (e) {
+      process.stderr.write(`[discover] Theme discovery failed: ${e.message}\n`);
+    }
+  }
+
   // Persist phase (sequential, under advisory lock)
   let persisted = 0;
   const persistErrors = [];
@@ -1160,6 +1243,7 @@ async function main() {
     },
     per_theme: perTheme,
     themes_touched: themesTouched,
+    theme_proposals: themeProposals,
   };
 
   console.log(JSON.stringify(output, null, 2));
@@ -1168,6 +1252,7 @@ async function main() {
   process.stderr.write(`Duration: ${durationSeconds}s | Raw: ${totalRaw} | Deduped: ${deduped.length}\n`);
   process.stderr.write(`New: ${diff.new.length} | Changed: ${diff.changed.length} | Known: ${diff.known.length}\n`);
   if (opts.persist) process.stderr.write(`Persisted: ${persisted}\n`);
+  if (themeProposals.length) process.stderr.write(`Theme proposals: ${themeProposals.length}\n`);
   if (domainsFailed.length) process.stderr.write(`Failed domains: ${domainsFailed.join(', ')}\n`);
 }
 

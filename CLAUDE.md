@@ -166,6 +166,14 @@ node .claude/skills/agent-skills/gmail-monitor/scripts/doctor.js
 
 **When to use:** Check outreach response status before nudging founders, verify meeting confirmations, find conversation context before calls, track who's responded and who needs follow-up. Especially useful during pipeline reviews — search by founder name or email to get the full conversation history.
 
+**CRITICAL — SavvyCal cross-check:** When reviewing pipeline status, ALWAYS run `from:savvycal --newer=30d` to catch bookings. SavvyCal confirmations come from `notifications@savvycal.com`, not from the founder's email — so searching by founder name/email alone will miss scheduled meetings. A founder who "hasn't responded" may have booked directly via SavvyCal without replying to the email thread.
+
+**Pipeline review checklist (in this order):**
+1. `from:savvycal --newer=30d --full=true` — catch all bookings and cancellations first
+2. Search by founder name/email — catch direct email replies
+3. Cross-reference with calendar (`query.js --from=today --to=+30d`) — verify scheduled meetings
+4. Only THEN classify someone as "no response"
+
 ### Gmail Draft (`gmail-draft`)
 
 Opens a pre-filled Gmail compose window via mailto: link. Review and send from your mail client.

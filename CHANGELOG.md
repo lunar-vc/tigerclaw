@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-02-17
+- Add tmux-sensible plugin via TPM
 - Add auto-fetch + behind-origin warning to Flox activate hook
 - Cast wider net: theme-driven queries, multi-source scan, graph edge fix
 - Cast wider net: theme-driven query architecture replaces generic domain-based searches — queries now use vocabulary extracted from theme memory files (one-liner, primitive, title keywords) instead of static domain terms

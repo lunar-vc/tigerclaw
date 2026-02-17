@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-02-17
+- Wire graph into scoring pipeline with compound signal detection
+
 ## 2026-02-16
 - Make user identity dynamic from Linear MCP instead of hardcoded
 - Filter completed/canceled/disqualified from pipeline pane and show Linear status

@@ -106,6 +106,7 @@ async function updatePipelineIndex(signal) {
       linear: signal.linear || null,
       theme: signal.theme || null,
       type: signal.type || 'latent_founder',
+      signal_strength: signal.signal_strength || null,
       last_seen: today(),
       memo: signal.memo || null
     };
@@ -136,6 +137,7 @@ async function updatePipelineIndex(signal) {
       action: signal.action || 'WATCH',
       linear: signal.linear || null,
       theme: signal.theme || null,
+      signal_strength: signal.signal_strength || null,
       funded: signal.funded ?? null,
       last_seen: today(),
       memo: signal.memo || null
@@ -394,12 +396,16 @@ async function main() {
         await upsertNode(graph, 'Person', {
           slug, name: signal.name, action: signal.action || 'WATCH',
           linear: signal.linear || '', theme: signal.theme || '',
-          type: signal.type || 'latent_founder', last_seen: today(),
+          type: signal.type || 'latent_founder',
+          signal_strength: signal.signal_strength || '',
+          last_seen: today(),
         });
         if (signal.theme) {
+          const confidenceMap = { direct: '0.9', adjacent: '0.6', tangential: '0.3' };
+          const confidence = confidenceMap[signal.thesis_fit] || '0.5';
           await upsertNode(graph, 'Theme', { key: signal.theme, title: signal.theme });
           await upsertEdge(graph, 'Person', slug, 'HAS_EXPERTISE_IN', 'Theme', signal.theme,
-            { type: 'direct', confidence: '0.7' });
+            { type: signal.thesis_fit || 'direct', confidence });
         }
         // Sync relationship edges
         const rel = signal.relationships || {};
@@ -429,6 +435,7 @@ async function main() {
         await upsertNode(graph, 'Company', {
           slug, name: signal.name, action: signal.action || 'WATCH',
           linear: signal.linear || '', theme: signal.theme || '',
+          signal_strength: signal.signal_strength || '',
           funded: signal.funded === true ? 'true' : signal.funded === false ? 'false' : '',
           last_seen: today(),
         });

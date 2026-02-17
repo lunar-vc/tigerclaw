@@ -269,6 +269,73 @@ function detectThemeAdjacency(themes, peopleByTheme) {
   return edges;
 }
 
+// ── Detect founder relationships ────────────────────────────────────────
+
+async function detectFounderEdges(index) {
+  const edges = [];
+  const companiesDir = join(MEMORY_DIR, 'companies');
+  let companyFiles;
+  try {
+    companyFiles = (await readdir(companiesDir)).filter(f => f.endsWith('.md'));
+  } catch {
+    return edges;
+  }
+
+  // Build person slug lookup from pipeline index
+  const personSlugs = new Set(Object.keys(index.people || {}));
+  const nameToSlug = new Map();
+  for (const [slug, person] of Object.entries(index.people || {})) {
+    nameToSlug.set(person.name.toLowerCase(), slug);
+  }
+
+  for (const file of companyFiles) {
+    try {
+      const content = await readFile(join(companiesDir, file), 'utf8');
+      const companySlug = file.replace('.md', '');
+
+      // Parse "Founded by:" or "**Founder:**" fields
+      const founderMatch = content.match(/\*\*Founded by:\*\* (.+)/i)
+        || content.match(/\*\*Founder:\*\* (.+)/i)
+        || content.match(/\*\*Founders?:\*\* (.+)/i);
+
+      if (!founderMatch) continue;
+
+      // Split on commas, "and", "&" to handle multiple founders
+      const founderNames = founderMatch[1]
+        .split(/,|\band\b|&/)
+        .map(n => n.trim())
+        .filter(Boolean);
+
+      for (const founderName of founderNames) {
+        const lowerName = founderName.toLowerCase();
+        let founderSlug = nameToSlug.get(lowerName);
+
+        if (!founderSlug) {
+          // Try slugifying the name
+          const candidateSlug = founderName.toLowerCase().normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          if (personSlugs.has(candidateSlug)) {
+            founderSlug = candidateSlug;
+          }
+        }
+
+        if (founderSlug) {
+          edges.push({
+            type: 'FOUNDED',
+            from: founderSlug,
+            to: companySlug,
+            fromLabel: 'Person',
+            toLabel: 'Company',
+            props: { source: 'company_topic_file' },
+          });
+        }
+      }
+    } catch { /* skip unreadable files */ }
+  }
+
+  return edges;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -323,7 +390,16 @@ async function main() {
   const coauthorEdges = await detectCoauthorship(people);
   const adjacencyEdges = detectThemeAdjacency(themes, peopleByTheme);
 
-  const allEdges = [...affiliationEdges, ...coauthorEdges, ...adjacencyEdges];
+  // Detect founder edges (Person -> Company)
+  let index;
+  try {
+    index = JSON.parse(await readFile(PIPELINE_INDEX, 'utf8'));
+  } catch {
+    index = { people: {}, companies: {} };
+  }
+  const founderEdges = await detectFounderEdges(index);
+
+  const allEdges = [...affiliationEdges, ...coauthorEdges, ...adjacencyEdges, ...founderEdges];
 
   // Report
   console.log(`Shared affiliations:`);
@@ -340,6 +416,11 @@ async function main() {
   console.log(`\nTheme adjacencies: ${adjacencyEdges.length}`);
   for (const e of adjacencyEdges) {
     console.log(`  ${e.from} <-> ${e.to} (${e.props.skill_transfer})`);
+  }
+
+  console.log(`\nFounder relationships: ${founderEdges.length}`);
+  for (const e of founderEdges) {
+    console.log(`  ${e.from} -[:FOUNDED]-> ${e.to}`);
   }
 
   console.log(`\nTotal edges to write: ${allEdges.length}`);
@@ -374,6 +455,7 @@ async function main() {
     affiliations: affiliationEdges.length,
     coauthorships: coauthorEdges.length,
     adjacencies: adjacencyEdges.length,
+    founder: founderEdges.length,
     total: allEdges.length,
   }));
 }

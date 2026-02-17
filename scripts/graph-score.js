@@ -183,6 +183,177 @@ export async function computeProximityBonus(graph, slug, opts = {}) {
   };
 }
 
+// ── Graph bonus rubric ──────────────────────────────────────────────────
+//
+// Explicit rubric-based graph scoring. Each feature is a discrete Cypher
+// query returning a boolean + points. Adds to (not replaces) the attribute
+// score from score-signal.js.
+
+const GRAPH_RUBRIC = [
+  {
+    key: 'coauthors_in_pipeline',
+    label: 'Has co-author(s) in pipeline',
+    points: 2,
+    query: `
+      MATCH (p:Person {slug: $slug})-[:COAUTHORED]-(o:Person)
+      WHERE o.action IN ['WATCH','REACH_OUT','IN_PROGRESS']
+      RETURN count(o) AS cnt`,
+    test: rows => (rows[0]?.cnt || 0) > 0,
+  },
+  {
+    key: 'connected_to_reach_out',
+    label: 'Connected to REACH_OUT candidate (1 hop)',
+    points: 2,
+    query: `
+      MATCH (p:Person {slug: $slug})-[]-(o:Person)
+      WHERE o.action = 'REACH_OUT'
+      RETURN count(o) AS cnt`,
+    test: rows => (rows[0]?.cnt || 0) > 0,
+  },
+  {
+    key: 'bridges_themes',
+    label: 'Bridges multiple themes',
+    points: 2,
+    query: `
+      MATCH (p:Person {slug: $slug})-[:HAS_EXPERTISE_IN]->(t:Theme)
+      RETURN count(t) AS cnt`,
+    test: rows => (rows[0]?.cnt || 0) >= 2,
+  },
+  {
+    key: 'affiliation_cluster',
+    label: 'Shared affiliation with tracked candidate',
+    points: 1,
+    query: `
+      MATCH (p:Person {slug: $slug})-[:WORKED_WITH]-(o:Person)
+      WHERE o.action IN ['WATCH','REACH_OUT','IN_PROGRESS']
+      RETURN count(o) AS cnt`,
+    test: rows => (rows[0]?.cnt || 0) > 0,
+  },
+  {
+    key: 'network_recent',
+    label: 'Network recent activity (connected person seen <14d)',
+    points: 1,
+    query: `
+      MATCH (p:Person {slug: $slug})-[]-(o:Person)
+      WHERE o.last_seen >= $cutoff AND o.slug <> $slug
+      RETURN count(o) AS cnt`,
+    test: rows => (rows[0]?.cnt || 0) > 0,
+  },
+  {
+    key: 'isolated',
+    label: 'Isolated node (no person-person connections)',
+    points: -1,
+    query: `
+      MATCH (p:Person {slug: $slug})-[r]-(o)
+      WHERE labels(o)[0] <> 'Theme'
+      RETURN count(r) AS cnt`,
+    test: rows => (rows[0]?.cnt || 0) === 0,
+  },
+];
+
+// 14 days ago in YYYY-MM-DD format
+function cutoffDate(days = 14) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().split('T')[0];
+}
+
+/**
+ * Score one person using the graph rubric.
+ * Returns the graph bonus breakdown (separate from attribute score).
+ */
+export async function graphRubricScore(graph, slug) {
+  let total = 0;
+  const breakdown = [];
+  const cutoff = cutoffDate(14);
+
+  for (const rule of GRAPH_RUBRIC) {
+    try {
+      const result = await graph.roQuery(rule.query, {
+        params: { slug, cutoff },
+      });
+      const rows = resultToRows(result);
+      if (rule.test(rows)) {
+        total += rule.points;
+        breakdown.push({ key: rule.key, label: rule.label, points: rule.points });
+      }
+    } catch {
+      // Query failed — skip this rule, don't break scoring
+    }
+  }
+
+  return { graph_bonus: total, graph_breakdown: breakdown };
+}
+
+/**
+ * Combined scoring: attribute score + graph rubric bonus.
+ * Takes a graph handle, slug, and an attribute score result (from score-signal.js).
+ */
+export async function graphScore(graph, slug, attrResult) {
+  const { graph_bonus, graph_breakdown } = await graphRubricScore(graph, slug);
+
+  const combinedScore = attrResult.score + graph_bonus;
+  let strength;
+  if (combinedScore >= 7) strength = 'strong';
+  else if (combinedScore >= 4) strength = 'medium';
+  else if (combinedScore >= 1) strength = 'weak';
+  else strength = 'pass';
+
+  return {
+    score: combinedScore,
+    strength,
+    attr_score: attrResult.score,
+    graph_bonus,
+    breakdown: attrResult.breakdown,
+    graph_breakdown,
+  };
+}
+
+/**
+ * Batch scoring: opens one graph connection, scores all signals, closes.
+ * Mutates signals in place by adding _graph_bonus and _graph_breakdown.
+ * Graceful: if graph fails to open, returns signals unchanged.
+ */
+export async function graphScoreBatch(signals) {
+  let db, graph;
+  try {
+    const graphMod = await import('./graph.js');
+    ({ db, graph } = await graphMod.open());
+    await graphMod.ensure(graph);
+  } catch {
+    // Graph unavailable — return signals unchanged
+    for (const sig of signals) {
+      sig._graph_bonus = 0;
+      sig._graph_breakdown = [];
+    }
+    return signals;
+  }
+
+  try {
+    for (const sig of signals) {
+      const slug = sig.slug || sig.name?.toLowerCase().normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      if (!slug) {
+        sig._graph_bonus = 0;
+        sig._graph_breakdown = [];
+        continue;
+      }
+      try {
+        const { graph_bonus, graph_breakdown } = await graphRubricScore(graph, slug);
+        sig._graph_bonus = graph_bonus;
+        sig._graph_breakdown = graph_breakdown;
+      } catch {
+        sig._graph_bonus = 0;
+        sig._graph_breakdown = [];
+      }
+    }
+  } finally {
+    try { await (await import('./graph.js')).close(db); } catch { /* ignore */ }
+  }
+
+  return signals;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function resultToRows(result) {
@@ -201,14 +372,19 @@ function resultToRows(result) {
 // ── CLI ──────────────────────────────────────────────────────────────────
 
 async function cli() {
-  const slug = process.argv[2];
+  const args = process.argv.slice(2).filter(a => !a.startsWith('--') && !a.startsWith('{'));
+  const slug = args[0];
+  const jsonArg = process.argv.slice(2).find(a => a.startsWith('{'));
+
   if (!slug || slug === 'help') {
-    console.log(`Usage: node scripts/graph-score.js <slug> [--already-funded]
+    console.log(`Usage: node scripts/graph-score.js <slug> [--already-funded] ['{"phd_defense":true}']
 
 Computes graph proximity bonus (0 to +${MAX_BONUS}) for a person.
+With JSON attrs: runs full attr+graph combined scoring.
 
 Examples:
   node scripts/graph-score.js aliakbar-nafar
+  node scripts/graph-score.js aliakbar-nafar '{"phd_defense":true,"new_repo":true}'
   node scripts/graph-score.js kaiyang-zhao --already-funded`);
     return;
   }
@@ -218,8 +394,42 @@ Examples:
 
   try {
     await ensure(graph);
-    const result = await computeProximityBonus(graph, slug, { alreadyFunded });
-    console.log(JSON.stringify(result, null, 2));
+
+    if (jsonArg) {
+      // Combined attr + graph scoring
+      const attrs = JSON.parse(jsonArg);
+      // Import score-signal rubric
+      const { default: scoreModule } = await import('./score-signal-lib.js').catch(() => ({ default: null }));
+      // Fallback: use inline minimal scorer if lib not available
+      const attrResult = scoreModule
+        ? scoreModule(attrs)
+        : { score: 0, strength: 'pass', breakdown: [] };
+
+      const rubric = await graphRubricScore(graph, slug);
+      const proximity = await computeProximityBonus(graph, slug, { alreadyFunded });
+
+      console.log(JSON.stringify({
+        slug,
+        attr_score: attrResult.score,
+        graph_rubric_bonus: rubric.graph_bonus,
+        graph_proximity_bonus: proximity.bonus,
+        combined_score: attrResult.score + rubric.graph_bonus,
+        graph_rubric_breakdown: rubric.graph_breakdown,
+        graph_proximity: { bonus: proximity.bonus, raw: proximity.raw, explanation: proximity.explanation },
+        attr_breakdown: attrResult.breakdown,
+      }, null, 2));
+    } else {
+      // Graph-only scoring
+      const proximity = await computeProximityBonus(graph, slug, { alreadyFunded });
+      const rubric = await graphRubricScore(graph, slug);
+      console.log(JSON.stringify({
+        slug,
+        proximity_bonus: proximity.bonus,
+        rubric_bonus: rubric.graph_bonus,
+        rubric_breakdown: rubric.graph_breakdown,
+        proximity: { raw: proximity.raw, explanation: proximity.explanation, paths: proximity.paths },
+      }, null, 2));
+    }
   } finally {
     await close(db);
   }

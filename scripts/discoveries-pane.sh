@@ -17,6 +17,7 @@
 #   watching     — interesting but needs more data
 #   disqualified — ruled out (shown crossed-out at bottom)
 #   summary      — scan complete line with result count
+#   compound     — emergent graph pattern (team formation, cluster, bridge)
 #
 
 set -uo pipefail
@@ -47,13 +48,14 @@ render() {
   SKIPPED_LINES=0
 
   # Header
-  local total=0 found=0 watching=0 disqualified=0 evaluating=0
+  local total=0 found=0 watching=0 disqualified=0 evaluating=0 compound=0
   if [ -s "$TC_DISCOVERIES" ]; then
     found=$(grep -c '"found"' "$TC_DISCOVERIES" 2>/dev/null || true)
     watching=$(grep -c '"watching"' "$TC_DISCOVERIES" 2>/dev/null || true)
     disqualified=$(grep -c '"disqualified"' "$TC_DISCOVERIES" 2>/dev/null || true)
     evaluating=$(grep -c '"evaluating"' "$TC_DISCOVERIES" 2>/dev/null || true)
-    total=$((found + watching + disqualified + evaluating))
+    compound=$(grep -c '"compound"' "$TC_DISCOVERIES" 2>/dev/null || true)
+    total=$((found + watching + disqualified + evaluating + compound))
   fi
 
   printf '\n'
@@ -61,6 +63,7 @@ render() {
   if [ "$total" -gt 0 ]; then
     printf "${DIM}%s found${RESET}" "$found"
     [ "$watching" -gt 0 ] && printf "${DIM} · %s watching${RESET}" "$watching"
+    [ "$compound" -gt 0 ] && printf "${GREEN} · %s compound${RESET}" "$compound"
     [ "$evaluating" -gt 0 ] && printf "${YELLOW} · %s evaluating${RESET}" "$evaluating"
     [ "$disqualified" -gt 0 ] && printf "${DIM} · %s passed${RESET}" "$disqualified"
   fi
@@ -182,6 +185,17 @@ render_entry() {
     disqualified)
       printf "  ${time_prefix}${RED}✕${RESET} ${STRIKETHROUGH}${GREY}%s${RESET}" "$name"
       [ -n "$reason" ] && printf " ${DIM}— %s${RESET}" "$reason"
+      printf '\n'
+      ;;
+    compound)
+      local strength_icon="●"
+      local strength_color="$AMBER"
+      case "$strength" in
+        STRONG|strong) strength_icon="▲"; strength_color="$GREEN" ;;
+        MEDIUM|medium) strength_icon="●"; strength_color="$AMBER" ;;
+      esac
+      printf "  ${time_prefix}${strength_color}${strength_icon}${RESET} ${BOLD}[COMPOUND]${RESET} ${WHITE}%s${RESET}" "$name"
+      [ -n "$detail" ] && printf "\n    ${DIM}%s${RESET}" "$detail"
       printf '\n'
       ;;
     summary)

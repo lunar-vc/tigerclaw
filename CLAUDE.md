@@ -261,9 +261,77 @@ node scripts/ripple.js '{"slug":"natan-levy","event":"new_repo","strength":"medi
 
 # Write ESCALATE/REVIEW results to .discoveries.jsonl
 node scripts/ripple.js natan-levy --event departure --strength strong --write
+
+# Persist ESCALATE suggestions + store graph edges
+node scripts/ripple.js natan-levy --event phd_defense --strength strong --write --persist
 ```
 
+**`--persist` flag:** When passed alongside `--write`, ESCALATE verdicts are also:
+1. Appended to `.ripple-suggestions.jsonl` with trigger, target, score, and paths
+2. Stored as `RIPPLE_SCORED` edges on the graph between trigger and target
+
+**No auto-upgrade.** Ripple suggests; the analyst decides. `.ripple-suggestions.jsonl` is checked at session startup and unprocessed escalations are presented to the user.
+
 **When to use:** Run ripple whenever a new signal arrives for a tracked person — departure, PhD defense, new GitHub repo, funding round. The output tells you which connected entities should be re-evaluated. ESCALATE results are strong candidates for upgrading from WATCH to REACH_OUT. Especially powerful when the graph has co-authorship and affiliation edges — two connections through different paths compound into a founding-team signal.
+
+### Compound Signals (`compound-signals`)
+
+Detects emergent graph patterns invisible to individual scoring: team formation, cluster activation, and cross-theme bridges. Runs as post-scan sweep or standalone.
+
+**Location:** `scripts/compound-signals.js`
+
+**Detectors:**
+- **Team Formation** — two co-authors/colleagues both active (last_seen within 30d), both WATCH/REACH_OUT
+- **Cluster Activation** — theme with 3+ tracked people all seen in last 14d
+- **Bridge Discovery** — person connected to 2+ themes that aren't ADJACENT_TO each other
+
+**Usage:**
+```bash
+node scripts/compound-signals.js              # run all detectors
+node scripts/compound-signals.js --write      # also append to .discoveries.jsonl
+node scripts/compound-signals.js --json       # JSON output only
+node scripts/compound-signals.js --detector team_formation  # specific detector
+```
+
+**Auto-runs:** Compound detection runs automatically after the persist phase in `parallel-scan.js`. Results appear in the discoveries pane with `[COMPOUND]` prefix.
+
+**When to use:** Run standalone when you want to check for emergent patterns without running a full scan. Particularly useful after ingesting new co-author or affiliation data via `extract-relationships.js`.
+
+### Graph-Enhanced Scoring (`graph-score`)
+
+Graph proximity bonus + rubric-based graph scoring for founder signals. Two scoring modes:
+1. **Proximity bonus** (0 to +3) — rewards candidates close to REACH_OUT/WATCH people
+2. **Graph rubric** — discrete checks for co-authors in pipeline, theme bridges, isolation
+
+**Location:** `scripts/graph-score.js`
+
+**Graph rubric:**
+
+| Feature | Points |
+|---------|--------|
+| Has co-author(s) in pipeline | +2 |
+| Connected to REACH_OUT candidate (1 hop) | +2 |
+| Bridges multiple themes | +2 |
+| Shared affiliation with tracked candidate | +1 |
+| Network recent activity (connected person seen <14d) | +1 |
+| Isolated node (no person-person connections) | -1 |
+
+**Usage:**
+```bash
+# Graph-only scoring
+node scripts/graph-score.js aliakbar-nafar
+
+# Combined attr + graph scoring
+node scripts/graph-score.js aliakbar-nafar '{"phd_defense":true,"new_repo":true}'
+```
+
+**Batch API (from other scripts):**
+```javascript
+import { graphScoreBatch } from './graph-score.js';
+await graphScoreBatch(signals);  // mutates signals with _graph_bonus, _graph_breakdown
+```
+
+**Auto-integrated:** Both proximity bonus and graph rubric are automatically applied during `parallel-scan.js` scoring.
 
 ### Brave Search (MCP)
 
@@ -577,6 +645,7 @@ The discoveries pane (`scripts/discoveries-pane.sh`) watches `.discoveries.jsonl
 {"status":"found","name":"Dr. Sarah Chen","detail":"MIT — PhD defense","strength":"STRONG","time":"14:23"}
 {"status":"watching","name":"Wei Liu","detail":"ex-Google — new CV repo","time":"14:30"}
 {"status":"disqualified","name":"Dr. Jane Doe","detail":"Stanford — NLP","reason":"no venture intent","time":"14:25"}
+{"status":"compound","name":"TEAM: Chen + Liu","detail":"Co-authors both active — possible team forming","strength":"STRONG","time":"14:32"}
 {"status":"summary","name":"THE-1811","detail":"7 watch · 5 pass","results":12,"time":"14:35"}
 ```
 
@@ -585,13 +654,14 @@ The discoveries pane (`scripts/discoveries-pane.sh`) watches `.discoveries.jsonl
 - `found` — qualified, signal confirmed (REACH_OUT candidates)
 - `watching` — interesting but needs more data (WATCH candidates)
 - `disqualified` — ruled out, shown crossed-out at bottom (PASS candidates)
+- `compound` — emergent graph pattern (team formation, cluster activation, bridge discovery)
 - `summary` — scan complete banner with result count (appended when research finishes)
 
 **Fields:**
-- `status` (required): evaluating | found | watching | disqualified | summary
+- `status` (required): evaluating | found | watching | disqualified | compound | summary
 - `name` (required): person or company name (theme ID for summary lines)
 - `detail` (required): affiliation + one-line summary (breakdown for summary lines)
-- `strength` (for found only): STRONG | MEDIUM | WEAK
+- `strength` (for found/compound): STRONG | MEDIUM | WEAK
 - `reason` (for disqualified only): why they were ruled out
 - `results` (for summary only): total number of results
 - `time` (required): HH:MM timestamp when discovered
@@ -962,7 +1032,11 @@ This file is read by `persist-to-memory.js` (outreach templates) and `welcome-po
    - If the mapped action differs from current, run: `node scripts/update-pipeline-status.js <slug> <new-action>`
 3. The pipeline pane auto-refreshes when the index file changes
 
-All three tasks run concurrently in background agents. The user sees the panes update live as data arrives. You are free to respond to user requests immediately — do not wait for these to finish.
+**4. Check ripple suggestions (background):**
+
+After syncing pipeline statuses, check `.ripple-suggestions.jsonl` for unprocessed ESCALATE entries. If any exist, present them to the user: "Ripple detected N upgrade suggestions — [names] may warrant upgrading from WATCH to REACH_OUT." These are suggestions only — do not auto-upgrade.
+
+All four tasks run concurrently in background agents. The user sees the panes update live as data arrives. You are free to respond to user requests immediately — do not wait for these to finish.
 
 When the user says **"refresh themes"**, repeat step 1 (foreground is fine). When the user says **"refresh pipeline"**, repeat step 2 (foreground is fine). When the user says **"sync pipeline"**, repeat step 3 (foreground is fine).
 

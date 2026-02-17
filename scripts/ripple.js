@@ -32,7 +32,7 @@
 //   node scripts/ripple.js '{"slug":"x","event":"phd_defense","strength":"strong"}'
 //   node scripts/ripple.js <slug> --event new_repo --write   # write to .discoveries.jsonl
 
-import { open, close, ensure } from './graph.js';
+import { open, close, ensure, upsertEdge } from './graph.js';
 import { appendFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +40,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
 const DISCOVERIES = join(PROJECT_ROOT, '.discoveries.jsonl');
+const RIPPLE_SUGGESTIONS = join(PROJECT_ROOT, '.ripple-suggestions.jsonl');
 
 // ── Edge weights ─────────────────────────────────────────────────────────
 
@@ -89,6 +90,7 @@ function parseArgs() {
       event: input.event || 'unknown',
       strength: input.strength || 'medium',
       write: args.includes('--write'),
+      persist: args.includes('--persist'),
     };
   }
 
@@ -97,13 +99,14 @@ function parseArgs() {
   let event = 'unknown';
   let strength = 'medium';
   const write = args.includes('--write');
+  const persist = args.includes('--persist');
 
   for (let i = 1; i < args.length; i++) {
     if (args[i] === '--event' && args[i + 1]) event = args[++i];
     if (args[i] === '--strength' && args[i + 1]) strength = args[++i];
   }
 
-  return { slug, event, strength, write };
+  return { slug, event, strength, write, persist };
 }
 
 // ── Graph queries ────────────────────────────────────────────────────────
@@ -319,6 +322,53 @@ async function writeDiscoveries(trigger, event, scored) {
   return lines.length;
 }
 
+// ── Persist (ESCALATE → .ripple-suggestions.jsonl + graph edge) ──────
+
+async function persistEscalations(graph, trigger, event, scored) {
+  const now = new Date();
+  const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  const timestamp = now.toISOString();
+  const lines = [];
+
+  for (const s of scored) {
+    if (s.verdict !== 'ESCALATE') continue;
+
+    // Write suggestion to JSONL
+    const suggestion = {
+      trigger: trigger.slug,
+      event,
+      target: s.slug,
+      target_name: s.name,
+      current_action: s.action || 'WATCH',
+      suggested: 'REACH_OUT',
+      score: s.score,
+      paths: s.paths.map(p => p.hop === 1 ? p.rel : `${p.rel1}→${p.via_name}→${p.rel2}`),
+      time,
+      timestamp,
+    };
+    lines.push(JSON.stringify(suggestion));
+
+    // Store RIPPLE_SCORED edge on graph
+    if (graph && s.slug) {
+      try {
+        await upsertEdge(graph, 'Person', trigger.slug, 'RIPPLE_SCORED', 'Person', s.slug, {
+          event,
+          score: String(s.score),
+          verdict: s.verdict,
+          timestamp,
+        });
+      } catch {
+        // Graph edge write failed — non-blocking
+      }
+    }
+  }
+
+  if (lines.length > 0) {
+    await appendFile(RIPPLE_SUGGESTIONS, lines.join('\n') + '\n');
+  }
+  return lines.length;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function rowToObj(result, idx) {
@@ -349,18 +399,22 @@ function resultToRows(result) {
 // ── Main ─────────────────────────────────────────────────────────────────
 
 async function main() {
-  const { slug, event, strength, write } = parseArgs();
+  const { slug, event, strength, write, persist } = parseArgs();
 
   if (!slug) {
-    console.log(`Usage: node scripts/ripple.js <slug> --event <type> [--strength strong|medium|weak] [--write]
+    console.log(`Usage: node scripts/ripple.js <slug> --event <type> [--strength strong|medium|weak] [--write] [--persist]
 
 Events: ${Object.entries(EVENT_LABELS).map(([k, v]) => `${k} (${v})`).join(', ')}
+
+Flags:
+  --write    Write ESCALATE/REVIEW results to .discoveries.jsonl
+  --persist  Write ESCALATE suggestions to .ripple-suggestions.jsonl + graph edges
 
 Examples:
   node scripts/ripple.js natan-levy --event phd_defense --strength strong
   node scripts/ripple.js natan-levy --event departure
   node scripts/ripple.js '{"slug":"natan-levy","event":"new_repo","strength":"medium"}'
-  node scripts/ripple.js natan-levy --event phd_defense --write   # also write to .discoveries.jsonl`);
+  node scripts/ripple.js natan-levy --event phd_defense --write --persist`);
     process.exit(0);
   }
 
@@ -398,6 +452,12 @@ Examples:
     if (write) {
       const count = await writeDiscoveries(trigger, event, scored);
       console.log(`\nWrote ${count} entries to .discoveries.jsonl`);
+    }
+
+    // 5b. Optionally persist ESCALATE suggestions
+    if (persist) {
+      const persistCount = await persistEscalations(graph, trigger, event, scored);
+      console.log(`\nPersisted ${persistCount} ESCALATE suggestions to .ripple-suggestions.jsonl`);
     }
 
     // 6. JSON summary

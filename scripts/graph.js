@@ -151,6 +151,7 @@ export async function seed(graph) {
       linear: person.linear || '',
       theme: person.theme || '',
       type: person.type || '',
+      signal_strength: person.signal_strength || '',
       last_seen: person.last_seen || '',
     });
     nodeCount++;
@@ -167,6 +168,7 @@ export async function seed(graph) {
       action: company.action || 'WATCH',
       linear: company.linear || '',
       theme: company.theme || '',
+      signal_strength: company.signal_strength || '',
       funded: company.funded === true ? 'true' : company.funded === false ? 'false' : '',
       last_seen: company.last_seen || '',
     });
@@ -192,9 +194,12 @@ export async function seed(graph) {
   // Create edges: Person -> Theme (HAS_EXPERTISE_IN)
   for (const [slug, person] of Object.entries(index.people || {})) {
     if (person.theme) {
+      // Use thesis_fit from index if available, otherwise default
+      const confidenceMap = { direct: '0.9', adjacent: '0.6', tangential: '0.3' };
+      const confidence = confidenceMap[person.thesis_fit] || '0.5';
       await upsertEdge(graph, 'Person', slug, 'HAS_EXPERTISE_IN', 'Theme', person.theme, {
-        type: 'direct',
-        confidence: '0.7',
+        type: person.thesis_fit || 'direct',
+        confidence,
       });
       edgeCount++;
     }

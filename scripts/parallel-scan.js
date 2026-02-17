@@ -1183,6 +1183,48 @@ async function main() {
     }
   }
 
+  // ── Compound signal detection ──────────────────────────────────────
+  let compoundSignals = [];
+  if (graphAvailable && graphHandle) {
+    try {
+      const { detectAll } = await import('./compound-signals.js');
+      compoundSignals = await detectAll({ graph: graphHandle.graph });
+      for (const c of compoundSignals) {
+        await writeDiscovery({
+          status: 'compound',
+          name: c.name,
+          detail: c.detail,
+          strength: c.strength,
+          time: timeHHMM(),
+        });
+      }
+      if (compoundSignals.length > 0) {
+        process.stderr.write(`[compound] Detected ${compoundSignals.length} compound signals\n`);
+      }
+    } catch (e) {
+      process.stderr.write(`[compound] Skipped: ${e.message}\n`);
+    }
+  }
+
+  // ── Graph densification (extract-relationships) ──────────────────
+  if (graphAvailable && persisted > 0) {
+    try {
+      const extractScript = join(PROJECT_ROOT, 'scripts/extract-relationships.js');
+      await new Promise(resolve => {
+        execFile('node', [extractScript], { timeout: 30_000 }, (error, stdout) => {
+          if (error) {
+            process.stderr.write(`[extract-rel] Error: ${error.message}\n`);
+          } else {
+            process.stderr.write(`[extract-rel] ${stdout.split('\n').pop() || 'done'}\n`);
+          }
+          resolve();
+        });
+      });
+    } catch (e) {
+      process.stderr.write(`[extract-rel] Skipped: ${e.message}\n`);
+    }
+  }
+
   // Close graph handle (kept open through ingestion + scoring phases)
   if (graphHandle) {
     try {
@@ -1244,6 +1286,7 @@ async function main() {
     per_theme: perTheme,
     themes_touched: themesTouched,
     theme_proposals: themeProposals,
+    compound_signals: compoundSignals,
   };
 
   console.log(JSON.stringify(output, null, 2));

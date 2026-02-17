@@ -135,6 +135,56 @@ echo '{"type": "founder_signal", ...}' | node .claude/skills/agent-skills/hookde
 }
 ```
 
+### Gmail Monitor (`gmail-monitor`)
+
+Read-only Gmail access for checking founder conversation status, tracking outreach responses, and monitoring pipeline communications. Uses Gmail API with `gmail.readonly` scope — cannot send, modify, or delete emails.
+
+**Location:** `.claude/skills/agent-skills/gmail-monitor/`
+**Scripts:** `scripts/search.js`, `scripts/thread.js`, `scripts/auth.js`, `scripts/doctor.js`
+**Requires:** `GOOGLE_CREDENTIALS_PATH` (OAuth2 credentials JSON)
+
+**Usage:**
+```bash
+# Search with Gmail query syntax
+node .claude/skills/agent-skills/gmail-monitor/scripts/search.js "from:founder@startup.com"
+
+# Structured flags
+node .claude/skills/agent-skills/gmail-monitor/scripts/search.js --from="sarah@example.com" --subject="intro" --newer=7d
+
+# Include full email bodies
+node .claude/skills/agent-skills/gmail-monitor/scripts/search.js "subject:term sheet" --full=true --limit=10
+
+# Read a full thread
+node .claude/skills/agent-skills/gmail-monitor/scripts/thread.js <threadId>
+node .claude/skills/agent-skills/gmail-monitor/scripts/thread.js <threadId> --raw --limit=5
+
+# Health check
+node .claude/skills/agent-skills/gmail-monitor/scripts/doctor.js
+```
+
+**Search flags:** `--from`, `--to`, `--subject`, `--query`, `--after`, `--before`, `--newer` (e.g. `7d`), `--older` (e.g. `1y`), `--has` (e.g. `attachment`), `--label`, `--limit` (default 20), `--full` (include bodies)
+
+**When to use:** Check outreach response status before nudging founders, verify meeting confirmations, find conversation context before calls, track who's responded and who needs follow-up. Especially useful during pipeline reviews — search by founder name or email to get the full conversation history.
+
+### Gmail Draft (`gmail-draft`)
+
+Opens a pre-filled Gmail compose window via mailto: link. Review and send from your mail client.
+
+**Location:** `.claude/skills/agent-skills/gmail-draft/`
+**Script:** `scripts/draft.js`
+
+**Usage:**
+```bash
+node .claude/skills/agent-skills/gmail-draft/scripts/draft.js \
+  --to="founder@example.com" \
+  --subject="Quick intro" \
+  --body="Hey,\n\nMick here from lunar.vc..."
+```
+
+**Fields:** `--to` (required), `--subject`, `--body`, `--cc`, `--bcc`
+
+**When to use:** After drafting outreach or nudge text, use this to open Gmail with the draft pre-filled for review before sending.
+
 ### Enrichment Cache (`enrichment-cache`)
 
 Caches GitHub profiles, Arxiv papers, LinkedIn data, and web pages to avoid redundant API calls across scans.

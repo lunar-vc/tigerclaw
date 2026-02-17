@@ -3,7 +3,7 @@
 // init-graph — Initialize the Tigerclaw relationship graph in FalkorDB.
 //
 // Creates the graph schema with nodes (Person, Institution, Paper, Company)
-// and edges (CO_AUTHOR, ADVISED_BY, AFFILIATED_WITH, WORKED_AT, AUTHORED).
+// and edges (COAUTHORED, ADVISED_BY, AFFILIATED_WITH, WORKED_AT, AUTHORED).
 // Uses FalkorDBLite (embedded, zero config, persistent to data/graph/).
 //
 // Usage:

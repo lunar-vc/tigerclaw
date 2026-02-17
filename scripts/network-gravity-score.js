@@ -18,9 +18,12 @@
 // Output:
 //   { "network_gravity_score": 8, "strength": "strong", "breakdown": [...], "anchors": ["slug"] }
 
-const { resolve, dirname } = require('path');
-const { readFileSync } = require('fs');
-const PROJECT_ROOT = resolve(dirname(__filename), '..');
+import { resolve, dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = resolve(__dirname, '..');
 const GRAPH_PATH = resolve(PROJECT_ROOT, 'data', 'graph');
 const PIPELINE_INDEX = resolve(PROJECT_ROOT, '.pipeline-index.json');
 
@@ -31,7 +34,8 @@ async function main() {
     process.exit(1);
   }
 
-  const { FalkorDB } = require('falkordblite');
+  const { default: FalkorDBModule } = await import('falkordblite');
+  const FalkorDB = FalkorDBModule.FalkorDB || FalkorDBModule;
 
   // Load pipeline to identify anchors (REACH_OUT / IN_PROGRESS)
   let index;
@@ -67,7 +71,7 @@ async function main() {
   for (const anchor of anchorSlugs) {
     if (anchor === slug) continue;
     const result = await graph.query(
-      `MATCH (a:Person {slug: $a})-[:CO_AUTHOR]-(b:Person {slug: $b})
+      `MATCH (a:Person {slug: $a})-[:COAUTHORED]-(b:Person {slug: $b})
        RETURN a.slug AS anchor`,
       { params: { a: slug, b: anchor } }
     );
@@ -82,7 +86,7 @@ async function main() {
   for (const anchor of anchorSlugs) {
     if (anchor === slug || anchorsFound.has(anchor)) continue;
     const result = await graph.query(
-      `MATCH (a:Person {slug: $a})-[:CO_AUTHOR*2]-(b:Person {slug: $b})
+      `MATCH (a:Person {slug: $a})-[:COAUTHORED*2]-(b:Person {slug: $b})
        RETURN a.slug AS anchor LIMIT 1`,
       { params: { a: slug, b: anchor } }
     );

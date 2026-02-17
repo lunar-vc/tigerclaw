@@ -1,6 +1,15 @@
 # Changelog
 
 ## 2026-02-17
+- Cast wider net: theme-driven queries, multi-source scan, graph edge fix
+- Cast wider net: theme-driven query architecture replaces generic domain-based searches — queries now use vocabulary extracted from theme memory files (one-liner, primitive, title keywords) instead of static domain terms
+- Add multi-source fan-out: `--sources=brave,arxiv,s2,hn,departure,conference,patent` enables parallel searches across Brave, arXiv API, Semantic Scholar API, HackerNews Algolia, and self-executing scan scripts
+- New arXiv scan script (`scripts/arxiv-scan.js`): searches papers by category + keywords with full author/co-author extraction
+- New Semantic Scholar scan script (`scripts/semantic-scholar-scan.js`): 200M+ paper search with co-author graphs and citation data, retry logic for rate limits
+- New HackerNews scan script (`scripts/hn-scan.js`): Show HN posts and career transition comments via Algolia API
+- Make departure/conference/patent scans self-executing with embedded Brave search, name extraction, and `##SIGNAL##` live streaming (previously query-template generators only)
+- Standardize graph edge type `CO_AUTHOR` → `COAUTHORED` across all writers and readers (graph-sync, backfill-graph, persist-to-memory, one-hop-search, network-gravity-score, init-graph)
+- Convert one-hop-search.js and network-gravity-score.js from CJS to ESM
 - Update changelog with graph-integrated scoring summary
 - Wire graph into scoring pipeline: 6-rule rubric scoring, compound signal detection (team formation, cluster activation, bridge discovery), ripple persistence, and end-to-end signal_strength flow
 

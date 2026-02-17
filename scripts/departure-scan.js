@@ -2,19 +2,28 @@
 //
 // departure-scan — Monitor FAANG/top-lab departures for founder signals.
 //
-// Searches brave_news_search for recent departure announcements from major
-// tech companies. Outputs signals in standard schema for pipeline processing.
+// Self-executing: searches Brave Web Search API directly and outputs signals
+// in standard schema for pipeline processing.
 //
 // Usage:
-//   node scripts/departure-scan.js                    # All companies, past week
-//   node scripts/departure-scan.js --company=Google   # Specific company
-//   node scripts/departure-scan.js --days=14          # Past 2 weeks
-//   node scripts/departure-scan.js --domain=ai        # Filter by thesis domain
+//   node scripts/departure-scan.js                       # All companies, past week
+//   node scripts/departure-scan.js --company=Google      # Specific company
+//   node scripts/departure-scan.js --days=14             # Past 2 weeks
+//   node scripts/departure-scan.js --domain=ai           # Filter by thesis domain
 //
 // Output: JSON array of departure signals ready for scoring and persistence.
-//
-// Designed to use brave_news_search MCP tool — when run standalone, outputs
-// query templates that Claude can execute via MCP.
+
+import https from 'node:https';
+
+const BRAVE_API_KEY = process.env.BRAVE_API_KEY;
+if (!BRAVE_API_KEY) {
+  process.stderr.write('Error: BRAVE_API_KEY not set\n');
+  console.log('[]');
+  process.exit(1);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function getTodayDate() { return new Date().toISOString().split('T')[0]; }
 
 const COMPANIES = [
   'Google', 'Meta', 'Apple', 'Amazon', 'Microsoft', 'OpenAI', 'Anthropic',
@@ -24,11 +33,8 @@ const COMPANIES = [
 
 const QUERY_PATTERNS = [
   '"{company}" engineer departed starting startup',
-  '"{company}" researcher left founding',
   '"left {company}" "starting" OR "founding" OR "launching"',
-  '"departed {company}" engineer researcher',
   '"ex-{company}" founder startup launched',
-  '"{company}" VP director departed venture',
 ];
 
 const DOMAIN_KEYWORDS = {
@@ -44,78 +50,166 @@ const DOMAIN_KEYWORDS = {
   manufacturing: ['manufacturing', 'factory', 'industrial'],
 };
 
+// ── Brave Search ─────────────────────────────────────────────────────────
+
+async function braveSearch(query, freshness, count = 20) {
+  const params = new URLSearchParams({ q: query, count: String(count), freshness });
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.search.brave.com',
+      path: `/res/v1/web/search?${params.toString()}`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'X-Subscription-Token': BRAVE_API_KEY,
+      },
+      timeout: 30000,
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode === 429) {
+          resolve({ web: { results: [] } }); // rate limited — skip
+          return;
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`Brave ${res.statusCode}: ${data.slice(0, 200)}`));
+          return;
+        }
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error(`Brave parse: ${e.message}`)); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Brave timeout')); });
+    req.end();
+  });
+}
+
+// ── Name extraction for departure signals ────────────────────────────────
+
+function extractDepartureName(title, description) {
+  const text = `${title} ${description}`;
+  const patterns = [
+    /([A-Z][a-z]+\s+[A-Z][a-z]+)\s+(?:left|leaves|departed|departs|quits)/i,
+    /(?:ex-\w+['']?s?\s+)?([A-Z][a-z]+\s+[A-Z][a-z]+)\s+(?:joins|launches|starts|founds|founding)/i,
+    /(?:former|ex)\s+\w+\s+(?:\w+\s+)?([A-Z][a-z]+\s+[A-Z][a-z]+)/i,
+    /([A-Z][a-z]+\s+[A-Z][a-z]+),\s+(?:former|ex|who left)/i,
+    /([A-Z][a-z]+\s+[A-Z][a-z]+)\s+(?:said|announced|revealed|shared)/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) {
+      const name = m[1].trim();
+      if (name.split(/\s+/).length >= 2 && name.split(/\s+/).every(w => /^[A-Z]/.test(w))) {
+        return name;
+      }
+    }
+  }
+  return 'anonymous';
+}
+
+// ── Process results ──────────────────────────────────────────────────────
+
+function processDepartureHit(result, company, domain) {
+  const title = result.title || '';
+  const description = result.description || '';
+  const name = extractDepartureName(title, description);
+
+  return {
+    type: 'latent_founder_signal',
+    scanned_at: getTodayDate(),
+    name,
+    affiliation: `ex-${company}`,
+    location: null,
+    status: `Departed ${company}`,
+    work: title,
+    primitive: null,
+    thesis_fit: 'direct',
+    inflection_indicators: ['left big tech', 'departure'],
+    signal_strength: 'medium',
+    github: null,
+    linkedin: null,
+    arxiv: null,
+    twitter: null,
+    action: name !== 'anonymous' ? 'WATCH' : 'PASS - anonymous',
+    _source_url: result.url,
+    _signal_type: 'departure',
+    _search_domain: domain || 'infra',
+    _departure_company: company,
+    _name_confidence: name !== 'anonymous' ? 0.7 : 0,
+    _name_source: name !== 'anonymous' ? 'pattern' : 'none',
+  };
+}
+
+// ── CLI ──────────────────────────────────────────────────────────────────
+
 function parseArgs() {
   const args = { companies: COMPANIES, days: 7, domain: null };
   for (const arg of process.argv.slice(2)) {
-    if (arg.startsWith('--company=')) {
-      args.companies = [arg.split('=')[1]];
-    } else if (arg.startsWith('--days=')) {
-      args.days = parseInt(arg.split('=')[1]);
-    } else if (arg.startsWith('--domain=')) {
-      args.domain = arg.split('=')[1];
-    }
+    if (arg.startsWith('--company=')) args.companies = [arg.split('=')[1]];
+    else if (arg.startsWith('--days=')) args.days = parseInt(arg.split('=')[1]);
+    else if (arg.startsWith('--domain=')) args.domain = arg.split('=')[1];
   }
   return args;
 }
 
-function generateQueries(args) {
-  const queries = [];
+async function main() {
+  const args = parseArgs();
+  const freshness = args.days <= 7 ? 'pw' : args.days <= 30 ? 'pm' : 'py';
+  const signals = [];
 
+  // Pick subset of companies for efficiency (3 highest-signal patterns × companies)
+  const queries = [];
   for (const company of args.companies) {
     for (const pattern of QUERY_PATTERNS) {
       let query = pattern.replace(/{company}/g, company);
-
-      // Add domain filter if specified
       if (args.domain && DOMAIN_KEYWORDS[args.domain]) {
-        const keywords = DOMAIN_KEYWORDS[args.domain];
-        query += ` (${keywords.join(' OR ')})`;
+        query += ` (${DOMAIN_KEYWORDS[args.domain].join(' OR ')})`;
       }
-
-      queries.push({
-        query,
-        company,
-        freshness: args.days <= 7 ? 'pw' : args.days <= 30 ? 'pm' : 'py',
-        source: 'departure_scan',
-        signal_type: 'departure',
-      });
+      queries.push({ query, company });
     }
   }
 
-  return queries;
+  process.stderr.write(`Departure scan: ${queries.length} queries, freshness=${freshness}\n`);
+
+  for (let i = 0; i < queries.length; i++) {
+    const { query, company } = queries[i];
+    try {
+      process.stderr.write(`  [${i + 1}/${queries.length}] ${company}...\n`);
+      const response = await braveSearch(query, freshness, 10);
+      const results = response.web?.results || [];
+
+      for (const result of results) {
+        const signal = processDepartureHit(result, company, args.domain);
+        if (signal.name !== 'anonymous') {
+          signals.push(signal);
+          process.stderr.write(`##SIGNAL##${JSON.stringify({ event: 'result', name: signal.name, affiliation: signal.affiliation, work: signal.work.slice(0, 60) })}\n`);
+        }
+      }
+
+      await sleep(1200); // rate limit
+    } catch (err) {
+      process.stderr.write(`  Error: ${err.message}\n`);
+    }
+  }
+
+  // Dedup by name
+  const seen = new Set();
+  const deduped = signals.filter(s => {
+    const key = s.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  process.stderr.write(`Departure scan: ${deduped.length} unique signals\n`);
+  console.log(JSON.stringify(deduped, null, 2));
 }
 
-function main() {
-  const args = parseArgs();
-  const queries = generateQueries(args);
-
-  // Output format depends on context:
-  // When piped or used programmatically, output JSON queries
-  // Claude will execute these via brave_news_search MCP
-  const output = {
-    scan_type: 'departure',
-    generated_at: new Date().toISOString(),
-    config: {
-      companies: args.companies,
-      days: args.days,
-      domain: args.domain,
-    },
-    queries: queries,
-    total_queries: queries.length,
-    signal_schema: {
-      type: 'founder_signal',
-      signal_type: 'departure',
-      fields: ['name', 'company', 'role', 'departure_date', 'next_move', 'source_url'],
-    },
-    instructions: [
-      'Execute each query via brave_news_search MCP with the specified freshness',
-      'For each result, extract: person name, company, role, what they are doing next',
-      'Score each signal using: node scripts/score-signal.js \'{"left_faang":true,"departure":true,...}\'',
-      'Persist WATCH/REACH_OUT signals via: node scripts/persist-to-memory.js',
-      'Post strong signals to Hookdeck',
-    ],
-  };
-
-  console.log(JSON.stringify(output, null, 2));
-}
-
-main();
+main().catch(err => {
+  process.stderr.write(`Fatal: ${err.message}\n`);
+  console.log('[]');
+  process.exit(1);
+});

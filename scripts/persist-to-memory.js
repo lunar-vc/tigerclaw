@@ -412,7 +412,7 @@ async function main() {
         if (rel.co_authors?.length) {
           for (const coauthor of rel.co_authors) {
             await upsertNode(graph, 'Person', { slug: coauthor, name: coauthor });
-            await upsertEdge(graph, 'Person', slug, 'CO_AUTHOR', 'Person', coauthor, {});
+            await upsertEdge(graph, 'Person', slug, 'COAUTHORED', 'Person', coauthor, {});
           }
         }
         if (rel.advisor) {

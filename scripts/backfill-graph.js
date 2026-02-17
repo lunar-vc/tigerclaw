@@ -3,7 +3,7 @@
 // backfill-graph — Populate the Tigerclaw graph from pipeline index + enrichment cache.
 //
 // Reads .pipeline-index.json (all people + companies) and creates graph nodes + edges.
-// Also checks enrichment cache for stored _coauthors data to populate CO_AUTHOR edges
+// Also checks enrichment cache for stored _coauthors data to populate COAUTHORED edges
 // retroactively.
 //
 // Usage:
@@ -73,8 +73,8 @@ async function main() {
         // Create bidirectional co-author edge
         await graph.query(
           `MATCH (a:Person {slug: $a}), (b:Person {slug: $b})
-           MERGE (a)-[:CO_AUTHOR]->(b)
-           MERGE (b)-[:CO_AUTHOR]->(a)`,
+           MERGE (a)-[:COAUTHORED]->(b)
+           MERGE (b)-[:COAUTHORED]->(a)`,
           { params: { a: slug, b: coauthorSlug } }
         );
         edgesCreated++;
@@ -165,8 +165,8 @@ async function main() {
               );
               await graph.query(
                 `MATCH (a:Person {slug: $a}), (b:Person {slug: $b})
-                 MERGE (a)-[:CO_AUTHOR]->(b)
-                 MERGE (b)-[:CO_AUTHOR]->(a)`,
+                 MERGE (a)-[:COAUTHORED]->(b)
+                 MERGE (b)-[:COAUTHORED]->(a)`,
                 { params: { a: personSlug, b: coauthorSlug } }
               );
               edgesCreated++;

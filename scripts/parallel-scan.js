@@ -17,9 +17,10 @@
 //
 
 import { execFile, spawn } from 'node:child_process';
-import { appendFile, open, readFile, unlink, stat } from 'node:fs/promises';
+import { appendFile, open, readFile, readdir, unlink, stat } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isLikelyPersonName } from './name-validation.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
@@ -31,6 +32,17 @@ const DISCOVERIES_FILE = join(PROJECT_ROOT, '.discoveries.jsonl');
 const PIPELINE_INDEX = join(PROJECT_ROOT, '.pipeline-index.json');
 const LOCK_FILE = PIPELINE_INDEX + '.lock';
 const THEMES_FILE = join(PROJECT_ROOT, '.themes');
+const ARXIV_SCAN_SCRIPT = join(PROJECT_ROOT, 'scripts/arxiv-scan.js');
+const S2_SCAN_SCRIPT = join(PROJECT_ROOT, 'scripts/semantic-scholar-scan.js');
+const HN_SCAN_SCRIPT = join(PROJECT_ROOT, 'scripts/hn-scan.js');
+const DEPARTURE_SCAN_SCRIPT = join(PROJECT_ROOT, 'scripts/departure-scan.js');
+const CONFERENCE_SCAN_SCRIPT = join(PROJECT_ROOT, 'scripts/conference-scan.js');
+const PATENT_SCAN_SCRIPT = join(PROJECT_ROOT, 'scripts/patent-scan.js');
+
+const MEMORY_BASE = join(
+  process.env.HOME, '.claude/projects',
+  '-Users-morrisclay-Dev-tigerclaw', 'memory/themes'
+);
 
 const ALL_DOMAINS = [
   'quantum', 'manufacturing', 'materials', 'aerospace', 'ai', 'biotech',
@@ -203,33 +215,9 @@ function slugify(str) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-// Returns true if name looks like a real person name (not a text fragment).
-// Must be 2-4 words, each starting with uppercase, no common false-positive patterns.
-const NON_NAME_SUFFIXES = /(?:ics|tion|sion|ment|ness|ity|ogy|ure|ous|ive|ble|ance|ence|ware|tech|chip)$/i;
-
-function isRealName(name) {
-  if (!name || name === 'anonymous') return false;
-  const words = name.trim().split(/\s+/);
-  if (words.length < 2 || words.length > 4) return false;
-  // Every word must start with uppercase
-  if (!words.every(w => /^[A-Z]/.test(w))) return false;
-  // Reject common false positives from search.js name extraction
-  const lower = name.toLowerCase();
-  const junk = [
-    'the ', 'a ', 'an ', 'our ', 'its ', 'this ',
-    ' to', ' and', ' the', ' for', ' of', ' in', ' from', ' with',
-    'enabling', 'mastering', 'making', 'building', 'translating',
-    'synthesizing', 'aggregating', 'integrating', 'processing',
-    'multiple', 'reactive', 'electronic', 'hardware', 'design',
-    'central', 'integrated', 'step ', 'around ',
-  ];
-  if (junk.some(j => lower.includes(j))) return false;
-  // Suffix-based rejection: words ending with non-name suffixes (only for words >4 chars)
-  for (const w of words) {
-    if (w.length > 4 && NON_NAME_SUFFIXES.test(w)) return false;
-  }
-  return true;
-}
+// Name validation delegated to scripts/name-validation.mjs (imported as isLikelyPersonName)
+// Alias for backward compatibility in this file
+const isRealName = isLikelyPersonName;
 
 // ── Theme File Parsing ───────────────────────────────────────────────────
 
@@ -243,6 +231,37 @@ function inferDomain(labels, title) {
     if (titleLower.includes(hint)) return domain;
   }
   return null;
+}
+
+async function loadThemeVocabulary(theme) {
+  // Try to find the memory topic file for this theme
+  let files;
+  try {
+    files = await readdir(MEMORY_BASE);
+  } catch {
+    return { keywords: extractThemeKeywords(theme.title || theme.key), source: 'title' };
+  }
+
+  const prefix = theme.key.toLowerCase();
+  const file = files.find(f => f.startsWith(prefix));
+  if (!file) return { keywords: extractThemeKeywords(theme.title || theme.key), source: 'title' };
+
+  let content;
+  try {
+    content = await readFile(join(MEMORY_BASE, file), 'utf8');
+  } catch {
+    return { keywords: extractThemeKeywords(theme.title || theme.key), source: 'title' };
+  }
+
+  // Parse one-liner and primitive from frontmatter
+  const oneLiner = content.match(/\*\*One-liner:\*\*\s*(.+)/)?.[1] || '';
+  const primitive = content.match(/\*\*Primitive:\*\*\s*(.+)/)?.[1] || '';
+
+  // Combine title + one-liner + primitive, extract keywords
+  const fullText = `${theme.title || ''} ${oneLiner} ${primitive}`;
+  const keywords = extractThemeKeywords(fullText);
+
+  return { keywords, oneLiner, primitive, source: 'memory' };
 }
 
 async function parseThemesFile() {
@@ -493,18 +512,199 @@ function spawnSearch(domain, flags, abortCtl, onSignal) {
   });
 }
 
+// ── Spawn search.js per theme with theme vocabulary ───────────────────────
+
+function spawnThemeSearch(theme, vocab, flags, abortCtl, onSignal) {
+  return new Promise(resolve => {
+    // Pick top 6 most distinctive keywords from theme vocabulary
+    const queryTerms = vocab.keywords.slice(0, 6).join(' ');
+
+    const args = [SEARCH_SCRIPT, `--domain=${theme.domain}`, `--query=${queryTerms}`];
+    if (flags.enrich)            args.push('--enrich');
+    if (flags.freshness)         args.push(`--freshness=${flags.freshness}`);
+    if (flags.limit)             args.push(`--limit=${flags.limit}`);
+    if (flags.signalTypes)       args.push(`--signal-type=${flags.signalTypes}`);
+    if (flags.geo)               args.push(`--geo=${flags.geo}`);
+    if (flags.geoIncludeUnknown) args.push('--geo-include-unknown');
+
+    const startMs = Date.now();
+    const label = `${theme.key}:${theme.domain}`;
+    process.stderr.write(`[${label}] Starting theme search (query: ${queryTerms.slice(0, 60)})...\n`);
+
+    const child = spawn('node', args, {
+      env: process.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    child.stdin.end();
+    abortCtl.children.push(child);
+
+    const killTimer = setTimeout(() => {
+      try { child.kill('SIGTERM'); } catch { /* ignore */ }
+    }, 180_000);
+
+    let stdoutBuf = '';
+    let stderrPartial = '';
+
+    child.stdout.on('data', chunk => { stdoutBuf += chunk; });
+
+    child.stderr.on('data', chunk => {
+      stderrPartial += chunk;
+      const lines = stderrPartial.split('\n');
+      stderrPartial = lines.pop();
+
+      for (const line of lines) {
+        if (!line) continue;
+        if (line.startsWith('##SIGNAL##')) {
+          try {
+            const payload = JSON.parse(line.slice(10));
+            if (onSignal) onSignal(theme.key, theme.domain, payload);
+          } catch { /* malformed signal line */ }
+        } else {
+          process.stderr.write(`  [${label}] ${line}\n`);
+        }
+      }
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(killTimer);
+
+      if (stderrPartial) {
+        if (stderrPartial.startsWith('##SIGNAL##')) {
+          try {
+            const payload = JSON.parse(stderrPartial.slice(10));
+            if (onSignal) onSignal(theme.key, theme.domain, payload);
+          } catch { /* ignore */ }
+        } else {
+          process.stderr.write(`  [${label}] ${stderrPartial}\n`);
+        }
+      }
+
+      const idx = abortCtl.children.indexOf(child);
+      if (idx !== -1) abortCtl.children.splice(idx, 1);
+      const durationMs = Date.now() - startMs;
+
+      if (code !== 0 && code !== null) {
+        process.stderr.write(`[${label}] Error after ${durationMs}ms: exit code ${code}\n`);
+        resolve({ domain: theme.domain, themeKey: theme.key, signals: [], error: `exit code ${code}`, duration_ms: durationMs, source: 'brave' });
+        return;
+      }
+
+      try {
+        const signals = JSON.parse(stdoutBuf);
+        const count = Array.isArray(signals) ? signals.length : 0;
+        process.stderr.write(`[${label}] Done: ${count} signals in ${durationMs}ms\n`);
+        // Tag each signal with the theme that found it
+        const tagged = (Array.isArray(signals) ? signals : []).map(sig => {
+          sig._themes = [theme.key];
+          sig._theme_relevance = { [theme.key]: 1.0 };
+          return sig;
+        });
+        resolve({ domain: theme.domain, themeKey: theme.key, signals: tagged, error: null, duration_ms: durationMs, source: 'brave' });
+      } catch (e) {
+        process.stderr.write(`[${label}] JSON parse error: ${e.message}\n`);
+        resolve({ domain: theme.domain, themeKey: theme.key, signals: [], error: `JSON parse: ${e.message}`, duration_ms: durationMs, source: 'brave' });
+      }
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(killTimer);
+      const idx = abortCtl.children.indexOf(child);
+      if (idx !== -1) abortCtl.children.splice(idx, 1);
+      const durationMs = Date.now() - startMs;
+      process.stderr.write(`[${label}] Spawn error after ${durationMs}ms: ${err.message}\n`);
+      resolve({ domain: theme.domain, themeKey: theme.key, signals: [], error: err.message, duration_ms: durationMs, source: 'brave' });
+    });
+  });
+}
+
+// ── Spawn external scan script (arXiv, S2, HN, departure, conference, patent) ─
+
+function spawnExternalScan(scriptPath, scriptArgs, label, themeKey, domain, abortCtl) {
+  return new Promise(resolve => {
+    const startMs = Date.now();
+    process.stderr.write(`[${label}] Starting...\n`);
+
+    const child = spawn('node', [scriptPath, ...scriptArgs], {
+      env: process.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    child.stdin.end();
+    abortCtl.children.push(child);
+
+    const killTimer = setTimeout(() => {
+      try { child.kill('SIGTERM'); } catch { /* ignore */ }
+    }, 120_000);
+
+    let stdoutBuf = '';
+    let stderrBuf = '';
+
+    child.stdout.on('data', chunk => { stdoutBuf += chunk; });
+    child.stderr.on('data', chunk => { stderrBuf += chunk; });
+
+    child.on('close', (code) => {
+      clearTimeout(killTimer);
+      const idx = abortCtl.children.indexOf(child);
+      if (idx !== -1) abortCtl.children.splice(idx, 1);
+      const durationMs = Date.now() - startMs;
+
+      if (stderrBuf.trim()) {
+        for (const line of stderrBuf.trim().split('\n').slice(-5)) {
+          process.stderr.write(`  [${label}] ${line}\n`);
+        }
+      }
+
+      if (code !== 0 && code !== null) {
+        process.stderr.write(`[${label}] Error after ${durationMs}ms: exit code ${code}\n`);
+        resolve({ domain, themeKey, signals: [], error: `exit code ${code}`, duration_ms: durationMs, source: label.split(':')[0] });
+        return;
+      }
+
+      try {
+        const signals = JSON.parse(stdoutBuf);
+        const arr = Array.isArray(signals) ? signals : [];
+        const tagged = arr.map(sig => {
+          if (themeKey) {
+            sig._themes = [themeKey];
+            sig._theme_relevance = { [themeKey]: 1.0 };
+          }
+          return sig;
+        });
+        process.stderr.write(`[${label}] Done: ${tagged.length} signals in ${durationMs}ms\n`);
+        resolve({ domain, themeKey, signals: tagged, error: null, duration_ms: durationMs, source: label.split(':')[0] });
+      } catch (e) {
+        process.stderr.write(`[${label}] JSON parse error: ${e.message}\n`);
+        resolve({ domain, themeKey, signals: [], error: `JSON parse: ${e.message}`, duration_ms: durationMs, source: label.split(':')[0] });
+      }
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(killTimer);
+      const idx = abortCtl.children.indexOf(child);
+      if (idx !== -1) abortCtl.children.splice(idx, 1);
+      const durationMs = Date.now() - startMs;
+      process.stderr.write(`[${label}] Spawn error: ${err.message}\n`);
+      resolve({ domain, themeKey, signals: [], error: err.message, duration_ms: durationMs, source: label.split(':')[0] });
+    });
+  });
+}
+
 // ── Merge & Dedup (cross-theme aware) ────────────────────────────────────
 
 function mergeResults(domainResults, domainToThemes) {
   const allSignals = [];
-  for (const { domain, signals } of domainResults) {
+  for (const { domain, signals, themeKey } of domainResults) {
     for (const sig of signals) {
       sig._search_domain = sig._search_domain || domain;
-      // Classify signal against themes in its domain (preserve relevance scores)
-      const themes = domainToThemes[domain] || [];
-      const themeMatches = classifySignalToThemes(sig, themes);
-      sig._themes = themeMatches.map(m => m.key);
-      sig._theme_relevance = Object.fromEntries(themeMatches.map(m => [m.key, m.relevance]));
+      // If signal already has _themes set (theme-driven mode), keep them.
+      // Otherwise, classify against themes in its domain (legacy domain-driven mode).
+      if (!sig._themes || sig._themes.length === 0) {
+        const themes = domainToThemes[domain] || [];
+        const themeMatches = classifySignalToThemes(sig, themes);
+        sig._themes = themeMatches.map(m => m.key);
+        sig._theme_relevance = Object.fromEntries(themeMatches.map(m => [m.key, m.relevance]));
+      }
       // Extract work keywords for theme discovery clustering
       sig._work_keywords = extractWorkKeywords(sig.work || '', sig.primitive || '');
       allSignals.push(sig);
@@ -648,11 +848,15 @@ function touchTheme(themeKey, value) {
 
 // ── CLI Argument Parsing ───────────────────────────────────────────────────
 
+const ALL_SOURCES = ['brave', 'arxiv', 's2', 'hn', 'departure', 'conference', 'patent'];
+const DEFAULT_SOURCES = ['brave'];
+
 function parseArgs(argv) {
   const opts = {
     domains: [],
     all: false,
     themes: [],
+    sources: null, // null = use defaults; set explicitly via --sources=
     concurrency: 4,
     enrich: true,
     freshness: 30,
@@ -664,6 +868,7 @@ function parseArgs(argv) {
     discover: true,
     createThemes: false,
     dryRun: false,
+    explicitDomain: false, // true when --domains= is explicitly passed
   };
 
   for (const arg of argv) {
@@ -677,8 +882,12 @@ function parseArgs(argv) {
     else if (arg === '--create-themes') opts.createThemes = true;
     else if (arg === '--dry-run')       opts.dryRun = true;
     else if (arg === '--geo-include-unknown') opts.geoIncludeUnknown = true;
-    else if (arg.startsWith('--domains='))
+    else if (arg.startsWith('--sources='))
+      opts.sources = arg.slice(10).split(',').map(s => s.trim()).filter(s => ALL_SOURCES.includes(s));
+    else if (arg.startsWith('--domains=')) {
       opts.domains = arg.slice(10).split(',').map(d => d.trim()).filter(Boolean);
+      opts.explicitDomain = true;
+    }
     else if (arg.startsWith('--themes='))
       opts.themes = arg.slice(9).split(',').map(pair => {
         const [key, domain] = pair.split(':');
@@ -777,6 +986,8 @@ async function main() {
   if (opts.dryRun) {
     const plan = {
       scan_id: id,
+      mode: opts.themes.length > 0 && !opts.explicitDomain ? 'theme-driven' : 'domain-driven',
+      sources: opts.sources || DEFAULT_SOURCES,
       domains: opts.domains,
       themes: opts.themes.map(t => ({ key: t.key, domain: t.domain })),
       concurrency: opts.concurrency,
@@ -786,7 +997,9 @@ async function main() {
       signal_types: opts.signalTypes || 'all',
       geo: opts.geo || 'none',
       persist: opts.persist,
-      estimated_queries: opts.domains.length * 10,
+      estimated_queries: opts.themes.length > 0
+        ? opts.themes.filter(t => t.domain).length * (opts.sources || DEFAULT_SOURCES).length * 10
+        : opts.domains.length * 10,
     };
     process.stderr.write('\n=== DRY RUN ===\n' + JSON.stringify(plan, null, 2) + '\n');
     console.log(JSON.stringify(plan, null, 2));
@@ -794,6 +1007,7 @@ async function main() {
   }
 
   process.stderr.write(`\n=== Parallel Scan ${id} ===\n`);
+  process.stderr.write(`Sources: ${(opts.sources || DEFAULT_SOURCES).join(', ')}\n`);
   process.stderr.write(`Domains: ${opts.domains.join(', ')}\n`);
   if (opts.themes.length) process.stderr.write(`Themes: ${opts.themes.map(t => `${t.key}:${t.domain || '?'}`).join(', ')}\n`);
   process.stderr.write(`Concurrency: ${opts.concurrency} | Enrich: ${opts.enrich} | Freshness: ${opts.freshness}d | Limit: ${opts.limit}\n\n`);
@@ -832,11 +1046,20 @@ async function main() {
     geoIncludeUnknown: opts.geoIncludeUnknown,
   };
 
+  // Resolve sources (default: brave only; expand with --sources=)
+  const activeSources = opts.sources || DEFAULT_SOURCES;
+  const effectiveConcurrency = activeSources.length > 1
+    ? Math.max(opts.concurrency, 6) // raise concurrency when multi-source (independent rate limits)
+    : opts.concurrency;
+  const fanOutSemaphore = createSemaphore(effectiveConcurrency);
+
   // Stream discoveries in real-time via ##SIGNAL## stderr protocol
-  const domainResults = [];
+  const allResults = [];
   const liveSeenNames = new Set(); // dedup evaluating entries across domains
 
-  function handleLiveSignal(domain, payload) {
+  function handleLiveSignal(themeKeyOrDomain, domainOrPayload, payloadOrUndef) {
+    // Support both old (domain, payload) and new (themeKey, domain, payload) signatures
+    const payload = payloadOrUndef || domainOrPayload;
     if (payload.event === 'result' && payload.name && isRealName(payload.name)) {
       const nameKey = payload.name.toLowerCase();
       if (!liveSeenNames.has(nameKey)) {
@@ -851,18 +1074,152 @@ async function main() {
     }
   }
 
-  const promises = opts.domains.map(async domain => {
-    if (abortCtl.aborting) return { domain, signals: [], error: 'aborted', duration_ms: 0 };
-    await semaphore.acquire();
-    try {
-      if (abortCtl.aborting) return { domain, signals: [], error: 'aborted', duration_ms: 0 };
-      const result = await spawnSearch(domain, searchFlags, abortCtl, handleLiveSignal);
-      domainResults.push(result);
-      return result;
-    } finally {
-      semaphore.release();
+  const promises = [];
+  const useThemeDrivenMode = opts.themes.length > 0 && !opts.explicitDomain;
+
+  if (useThemeDrivenMode) {
+    // ── Theme-driven mode: spawn per theme with theme vocabulary ──────
+    process.stderr.write(`Mode: theme-driven (${opts.themes.length} themes × ${activeSources.length} sources)\n`);
+
+    for (const theme of opts.themes) {
+      if (!theme.domain) continue;
+      const vocab = await loadThemeVocabulary(theme);
+      process.stderr.write(`  ${theme.key}: ${vocab.keywords.slice(0, 6).join(', ')} (from ${vocab.source})\n`);
+
+      // Brave web search
+      if (activeSources.includes('brave')) {
+        promises.push((async () => {
+          if (abortCtl.aborting) return;
+          await fanOutSemaphore.acquire();
+          try {
+            if (abortCtl.aborting) return;
+            const result = await spawnThemeSearch(theme, vocab, searchFlags, abortCtl, handleLiveSignal);
+            allResults.push(result);
+          } finally { fanOutSemaphore.release(); }
+        })());
+      }
+
+      // arXiv paper search
+      if (activeSources.includes('arxiv')) {
+        const queryTerms = vocab.keywords.slice(0, 6).join(' ');
+        promises.push((async () => {
+          if (abortCtl.aborting) return;
+          await fanOutSemaphore.acquire();
+          try {
+            if (abortCtl.aborting) return;
+            const result = await spawnExternalScan(
+              ARXIV_SCAN_SCRIPT,
+              [`--domain=${theme.domain}`, `--query=${queryTerms}`, `--freshness=${searchFlags.freshness}`, `--limit=${searchFlags.limit}`],
+              `arxiv:${theme.key}`, theme.key, theme.domain, abortCtl
+            );
+            allResults.push(result);
+          } finally { fanOutSemaphore.release(); }
+        })());
+      }
+
+      // Semantic Scholar
+      if (activeSources.includes('s2')) {
+        const queryTerms = vocab.keywords.slice(0, 6).join(' ');
+        promises.push((async () => {
+          if (abortCtl.aborting) return;
+          await fanOutSemaphore.acquire();
+          try {
+            if (abortCtl.aborting) return;
+            const result = await spawnExternalScan(
+              S2_SCAN_SCRIPT,
+              [`--query=${queryTerms}`, `--limit=${searchFlags.limit}`],
+              `s2:${theme.key}`, theme.key, theme.domain, abortCtl
+            );
+            allResults.push(result);
+          } finally { fanOutSemaphore.release(); }
+        })());
+      }
+
+      // HackerNews
+      if (activeSources.includes('hn')) {
+        const queryTerms = vocab.keywords.slice(0, 4).join(' ');
+        promises.push((async () => {
+          if (abortCtl.aborting) return;
+          await fanOutSemaphore.acquire();
+          try {
+            if (abortCtl.aborting) return;
+            const result = await spawnExternalScan(
+              HN_SCAN_SCRIPT,
+              [`--query=${queryTerms}`, `--freshness=${searchFlags.freshness}`],
+              `hn:${theme.key}`, theme.key, theme.domain, abortCtl
+            );
+            allResults.push(result);
+          } finally { fanOutSemaphore.release(); }
+        })());
+      }
+
+      // Departure scan
+      if (activeSources.includes('departure')) {
+        promises.push((async () => {
+          if (abortCtl.aborting) return;
+          await fanOutSemaphore.acquire();
+          try {
+            if (abortCtl.aborting) return;
+            const result = await spawnExternalScan(
+              DEPARTURE_SCAN_SCRIPT,
+              [`--domain=${theme.domain}`, `--days=${searchFlags.freshness}`],
+              `departure:${theme.key}`, theme.key, theme.domain, abortCtl
+            );
+            allResults.push(result);
+          } finally { fanOutSemaphore.release(); }
+        })());
+      }
+
+      // Conference scan
+      if (activeSources.includes('conference')) {
+        promises.push((async () => {
+          if (abortCtl.aborting) return;
+          await fanOutSemaphore.acquire();
+          try {
+            if (abortCtl.aborting) return;
+            const result = await spawnExternalScan(
+              CONFERENCE_SCAN_SCRIPT,
+              [`--domain=${theme.domain}`],
+              `conference:${theme.key}`, theme.key, theme.domain, abortCtl
+            );
+            allResults.push(result);
+          } finally { fanOutSemaphore.release(); }
+        })());
+      }
+
+      // Patent scan
+      if (activeSources.includes('patent')) {
+        promises.push((async () => {
+          if (abortCtl.aborting) return;
+          await fanOutSemaphore.acquire();
+          try {
+            if (abortCtl.aborting) return;
+            const result = await spawnExternalScan(
+              PATENT_SCAN_SCRIPT,
+              [`--domain=${theme.domain}`],
+              `patent:${theme.key}`, theme.key, theme.domain, abortCtl
+            );
+            allResults.push(result);
+          } finally { fanOutSemaphore.release(); }
+        })());
+      }
     }
-  });
+  } else {
+    // ── Legacy domain-driven mode: spawn per domain ──────────────────
+    process.stderr.write(`Mode: domain-driven (${opts.domains.length} domains)\n`);
+
+    for (const domain of opts.domains) {
+      promises.push((async () => {
+        if (abortCtl.aborting) return;
+        await fanOutSemaphore.acquire();
+        try {
+          if (abortCtl.aborting) return;
+          const result = await spawnSearch(domain, searchFlags, abortCtl, handleLiveSignal);
+          allResults.push(result);
+        } finally { fanOutSemaphore.release(); }
+      })());
+    }
+  }
   await Promise.all(promises);
 
   process.removeListener('SIGINT', sigintHandler);
@@ -873,14 +1230,14 @@ async function main() {
   const domainsFailed = [];
   let totalRaw = 0;
 
-  for (const r of domainResults) {
+  for (const r of allResults) {
     totalRaw += r.signals.length;
     if (r.error && r.error !== 'aborted') domainsFailed.push(r.domain);
   }
 
   // Merge & dedup (cross-theme aware)
   process.stderr.write(`Merging ${totalRaw} raw signals...\n`);
-  const deduped = mergeResults(domainResults, domainToThemes);
+  const deduped = mergeResults(allResults, domainToThemes);
   process.stderr.write(`Deduped to ${deduped.length} unique signals\n`);
 
   // Progress heartbeat: merge complete
@@ -907,15 +1264,15 @@ async function main() {
   const anonSignals = deduped.filter(s => !isRealName(s.name));
   process.stderr.write(`Named: ${namedSignals.length} | Anonymous/junk: ${anonSignals.length}\n`);
 
-  // Scan diff (named only — anonymous would all collide on the same slug)
+  // Scan diff (named only — anonymous are dropped, not merged)
   process.stderr.write('Running scan diff...\n');
   const diffResult = await runScanDiff(namedSignals);
-  // Merge anonymous signals in as "new" (they can't be diffed)
   const diff = {
-    new: [...diffResult.new, ...anonSignals.map(s => ({ ...s, _diff: 'new' }))],
+    new: diffResult.new,
     changed: diffResult.changed,
     known: diffResult.known,
-    summary: `${diffResult.new.length}+${anonSignals.length} new, ${diffResult.changed.length} changed, ${diffResult.known.length} known`,
+    dropped: anonSignals.length,
+    summary: `${diffResult.new.length} new, ${diffResult.changed.length} changed, ${diffResult.known.length} known, ${anonSignals.length} dropped`,
   };
   process.stderr.write(`Diff: ${diff.summary}\n`);
 
@@ -964,6 +1321,7 @@ async function main() {
   // Score and write verdicts incrementally (one signal at a time)
   process.stderr.write('Scoring signals...\n');
   for (const sig of diff.new) {
+    if (!isRealName(sig.name)) continue; // safety net — skip junk that slipped through
     // Score (flat rubric)
     const attrs = mapSignalToScoringAttrs(sig);
     const result = scoreSignal(attrs);
@@ -1252,7 +1610,7 @@ async function main() {
   await writeDiscovery({
     status: 'summary',
     name: summaryName,
-    detail: `${reachOutCount} reach out · ${watchCount} watch · ${passCount} pass · ${diff.known.length} known`,
+    detail: `${reachOutCount} reach out · ${watchCount} watch · ${passCount} pass · ${diff.dropped || 0} dropped`,
     results: deduped.length,
     time: timeHHMM(),
   });

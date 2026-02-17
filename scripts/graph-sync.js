@@ -81,8 +81,8 @@ async function main() {
         );
         await graph.query(
           `MATCH (a:Person {slug: $a}), (b:Person {slug: $b})
-           MERGE (a)-[:CO_AUTHOR]->(b)
-           MERGE (b)-[:CO_AUTHOR]->(a)`,
+           MERGE (a)-[:COAUTHORED]->(b)
+           MERGE (b)-[:COAUTHORED]->(a)`,
           { params: { a: slug, b: coauthorSlug } }
         );
       }

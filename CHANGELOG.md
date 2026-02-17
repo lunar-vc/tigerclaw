@@ -1,7 +1,8 @@
 # Changelog
 
 ## 2026-02-17
-- Wire graph into scoring pipeline with compound signal detection
+- Update changelog with graph-integrated scoring summary
+- Wire graph into scoring pipeline: 6-rule rubric scoring, compound signal detection (team formation, cluster activation, bridge discovery), ripple persistence, and end-to-end signal_strength flow
 
 ## 2026-02-16
 - Make user identity dynamic from Linear MCP instead of hardcoded

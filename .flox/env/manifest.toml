@@ -104,10 +104,10 @@ on-activate = '''
     fi
   fi
 
-  # --- 5. Auto-fetch latest from origin ----------------------------------
+  # --- 5. Auto-pull latest from origin (fast-forward only) ---------------
   if git -C "$FLOX_ENV_PROJECT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    git -C "$FLOX_ENV_PROJECT" fetch --quiet 2>/dev/null &
-    FETCH_PID=$!
+    git -C "$FLOX_ENV_PROJECT" pull --ff-only --quiet 2>/dev/null &
+    PULL_PID=$!
   fi
 
   # --- 6. Ensure research + data directories exist ----------------------
@@ -148,12 +148,16 @@ LAUNCHER
     TC_WARNINGS=$((TC_WARNINGS + 1))
   fi
 
-  # --- 9. Check if behind origin after fetch completes --------------------
-  if [ -n "${FETCH_PID:-}" ]; then
-    wait "$FETCH_PID" 2>/dev/null
-    BEHIND=$(git -C "$FLOX_ENV_PROJECT" rev-list --count HEAD..@{u} 2>/dev/null || echo 0)
-    if [ "$BEHIND" -gt 0 ]; then
-      echo "  \033[38;5;220m⚠ Your branch is $BEHIND commit(s) behind origin — run: git pull\033[0m"
+  # --- 9. Report pull result ----------------------------------------------
+  if [ -n "${PULL_PID:-}" ]; then
+    if wait "$PULL_PID" 2>/dev/null; then
+      BEHIND=$(git -C "$FLOX_ENV_PROJECT" rev-list --count HEAD..@{u} 2>/dev/null || echo 0)
+      if [ "$BEHIND" -gt 0 ]; then
+        echo "  \033[38;5;220m⚠ $BEHIND commit(s) behind origin (pull skipped — not fast-forwardable)\033[0m"
+        echo ""
+      fi
+    else
+      echo "  \033[38;5;220m⚠ Auto-pull failed (diverged or offline) — run: git pull\033[0m"
       echo ""
     fi
   fi

@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-02-18
+- Auto-pull from origin on Flox activate instead of fetch-only
+
 ## 2026-02-17
 - Add tmux-sensible plugin via TPM
 - Add auto-fetch + behind-origin warning to Flox activate hook

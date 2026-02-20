@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-02-20
+- Add Tigerclaw setup and usage documentation
+
 ## 2026-02-18
 - Auto-pull from origin on Flox activate instead of fetch-only
 

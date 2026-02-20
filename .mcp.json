@@ -16,6 +16,19 @@
       "env": {
         "PUPPETEER_LAUNCH_OPTIONS": "{\"headless\":true}"
       }
+    },
+    "notion": {
+      "type": "http",
+      "url": "https://mcp.notion.com/mcp"
+    },
+    "gdrive": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-gdrive"],
+      "env": {
+        "GDRIVE_OAUTH_PATH": "/Users/mick/.config/tigerclaw/google-credentials.json",
+        "GDRIVE_CREDENTIALS_PATH": "/Users/mick/.config/tigerclaw/.gdrive-server-credentials.json"
+      }
     }
   }
 }

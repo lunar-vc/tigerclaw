@@ -3,7 +3,7 @@
 // refresh-pipeline.js — merge Linear deal data with pipeline index, write .pipeline
 //
 // Usage:
-//   node scripts/refresh-pipeline.js '{"deals":[{"id":"DEAL-1601","title":"...","url":"...","status":"Triage"}]}'
+//   node scripts/refresh-pipeline.js '{"deals":[{"id":"DEAL-1601","title":"...","url":"...","status":"Triage","dueDate":"2026-05-18"}]}'
 //
 // Reads .pipeline-index.json for ages/themes, merges with Linear deal data,
 // and writes .pipeline in a bash-parseable format watched by pipeline-pane.sh.
@@ -63,14 +63,22 @@ function daysSince(dateStr) {
   return Math.floor((now - then) / 86400000);
 }
 
+// ── Format a date as short month + day ─────────────────────────────────────
+function shortDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 // ── Extract short name from deal title ─────────────────────────────────────
 // Deal titles follow patterns like:
 //   "[Strong] Aliakbar Nafar — sandboxing agents"
 //   "[Medium] Natan Levy — verified runtime"
 // We want the name part for compact display.
 function extractNameFromTitle(title) {
-  // Strip leading [Strength] tag
-  let name = title.replace(/^\[(?:Strong|Medium|Weak)\]\s*/i, '');
+  // Strip leading [Strength/Watch] tag
+  let name = title.replace(/^\[(?:Strong|Medium|Weak|Watch)\]\s*/i, '');
   // If there's a dash separator, take everything before it
   const dashIdx = name.indexOf(' — ');
   if (dashIdx > 0) return name.substring(0, dashIdx).trim();
@@ -84,7 +92,7 @@ function extractNameFromTitle(title) {
 
 // ── Extract subtitle from deal title ───────────────────────────────────────
 function extractSubtitleFromTitle(title) {
-  let clean = title.replace(/^\[(?:Strong|Medium|Weak)\]\s*/i, '');
+  let clean = title.replace(/^\[(?:Strong|Medium|Weak|Watch)\]\s*/i, '');
   const dashIdx = clean.indexOf(' — ');
   if (dashIdx > 0) return clean.substring(dashIdx + 3).trim();
   const hyphenIdx = clean.indexOf(' - ');
@@ -94,7 +102,7 @@ function extractSubtitleFromTitle(title) {
 
 // ── Statuses to exclude entirely ────────────────────────────────────────────
 const EXCLUDED_STATUSES = new Set([
-  'done', 'completed', 'cancelled', 'canceled', 'disqualified',
+  'done', 'completed', 'cancelled', 'canceled', 'disqualified', 'duplicate',
 ]);
 
 // ── Map Linear status to group ─────────────────────────────────────────────
@@ -103,8 +111,49 @@ function statusGroup(status) {
   const s = status.toLowerCase();
   if (EXCLUDED_STATUSES.has(s)) return null; // filtered out
   if (s === 'triage') return 'Triage';
-  // Anything else (In Progress, Active, etc.) is "In Progress"
-  return 'In Progress';
+  if (s === 'backlog') return 'Watchlist';
+  // Anything else (Doing, Todo, etc.) is "Active"
+  return 'Active';
+}
+
+// ── Derive display status from all available signals ────────────────────────
+function displayStatus({ title, linearStatus, action, age, dueDate }) {
+  const t = (title || '').toLowerCase();
+
+  // 1. Title keyword detection (highest priority — most specific)
+  if (/meeting scheduled|scheduled/.test(t))       return 'scheduled';
+  if (/monitoring response|contacted/.test(t))      return 'reached out';
+  if (/pending outreach/.test(t))                   return 'pending outreach';
+  if (/draft ready/.test(t))                        return 'draft ready';
+
+  // 2. Snoozed: Backlog + future due date
+  if (dueDate) {
+    const daysUntil = -daysSince(dueDate);
+    if (daysUntil > 0) return `snoozed → ${shortDate(dueDate)}`;
+  }
+
+  // 3. Pipeline action + Linear status combos
+  const s = (linearStatus || '').toLowerCase();
+  if (action === 'REACH_OUT' && (s === 'doing' || s === 'todo'))  return 'reached out';
+  if (action === 'REACH_OUT')                                      return 'reached out';
+  if (action === 'IN_PROGRESS')                                    return 'in progress';
+  if (action === 'WATCH' && s === 'backlog')                       return 'watching';
+  if (action === 'WATCH')                                          return 'watching';
+
+  // 4. Fallback to Linear status
+  if (s === 'triage') return 'new';
+  if (s === 'doing')  return 'in progress';
+  if (s === 'todo')   return 'queued';
+
+  return linearStatus || 'unknown';
+}
+
+// ── Age qualifier ──────────────────────────────────────────────────────────
+function ageTag(age) {
+  if (age === null || age === undefined) return null;
+  if (age > 30) return 'stale';
+  if (age > 14) return 'aging';
+  return null;
 }
 
 // ── Build enriched deals (excluding completed/canceled/disqualified) ───────
@@ -114,10 +163,19 @@ const enriched = deals.map(d => {
 
   const pipelineEntry = linearToEntry[d.id] || {};
   const theme = pipelineEntry.theme || null;
+  const action = pipelineEntry.action || null;
   const lastSeen = pipelineEntry.last_seen || null;
   const age = daysSince(lastSeen);
   const name = extractNameFromTitle(d.title || '');
   const subtitle = extractSubtitleFromTitle(d.title || '');
+
+  const dStatus = displayStatus({
+    title: d.title,
+    linearStatus: d.status,
+    action,
+    age,
+    dueDate: d.dueDate,
+  });
 
   return {
     id: d.id,
@@ -126,6 +184,8 @@ const enriched = deals.map(d => {
     subtitle,
     url: d.url || `https://linear.app/tigerslug/issue/${d.id}`,
     status: d.status || 'Triage',
+    displayStatus: dStatus,
+    ageTag: ageTag(age),
     group,
     theme,
     age,
@@ -134,7 +194,7 @@ const enriched = deals.map(d => {
 }).filter(Boolean);
 
 // ── Group deals ────────────────────────────────────────────────────────────
-const groups = { 'Triage': [], 'In Progress': [] };
+const groups = { 'Triage': [], 'Active': [], 'Watchlist': [] };
 for (const deal of enriched) {
   if (!groups[deal.group]) groups[deal.group] = [];
   groups[deal.group].push(deal);
@@ -148,7 +208,7 @@ const lines = [];
 lines.push(`  refreshed: ${timeStr}`);
 lines.push('');
 
-for (const groupName of ['Triage', 'In Progress']) {
+for (const groupName of ['Triage', 'Active', 'Watchlist']) {
   const groupDeals = groups[groupName] || [];
   if (groupDeals.length === 0) continue;
 
@@ -159,14 +219,13 @@ for (const groupName of ['Triage', 'In Progress']) {
     lines.push(`  ${deal.id}  ${deal.name}${subtitle}`);
     // Line 2: URL
     lines.push(`    ${deal.url}`);
-    // Line 3: status · theme · age
+    // Line 3: displayStatus · ageTag · theme · age
     const parts = [];
-    if (deal.status) parts.push(deal.status);
+    parts.push(deal.displayStatus);
+    if (deal.ageTag) parts.push(deal.ageTag);
     if (deal.theme) parts.push(deal.theme);
     if (deal.age !== null) parts.push(`${deal.age}d`);
-    if (parts.length > 0) {
-      lines.push(`    ${parts.join(' · ')}`);
-    }
+    lines.push(`    ${parts.join(' · ')}`);
     lines.push('');
   }
 }
@@ -175,5 +234,6 @@ writeFileSync(PIPELINE_FILE, lines.join('\n') + '\n', 'utf8');
 
 // ── Print summary ──────────────────────────────────────────────────────────
 const triage = (groups['Triage'] || []).length;
-const active = (groups['In Progress'] || []).length;
-console.log(`Pipeline pane updated: ${triage} triage · ${active} active (excluded completed/canceled/disqualified)`);
+const active = (groups['Active'] || []).length;
+const watchlist = (groups['Watchlist'] || []).length;
+console.log(`Pipeline pane updated: ${triage} triage · ${active} active · ${watchlist} watchlist`);

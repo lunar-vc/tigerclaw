@@ -201,6 +201,7 @@ common = '''
   alias post-hookdeck="node $FLOX_ENV_PROJECT/.claude/skills/agent-skills/hookdeck/scripts/post.js"
   alias tigerclaw-doctor="bash $FLOX_ENV_PROJECT/scripts/doctor.sh"
   alias tigerclaw-new="bash $FLOX_ENV_PROJECT/scripts/tigerclaw-launch.sh --new"
+  alias tigerclaw-mobile="bash $FLOX_ENV_PROJECT/scripts/tigerclaw-launch.sh --mobile"
   log-discovery() { printf "[$(date +%H:%M)] %s\n" "$*" >> "$FLOX_ENV_PROJECT/.discoveries"; }
 '''
 

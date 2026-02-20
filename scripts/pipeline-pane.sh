@@ -67,16 +67,18 @@ render_deals() {
 
   # ── Parse the .pipeline file ──────────────────────────────────────────
   local current_group=""
-  local triage_count=0 active_count=0
+  local triage_count=0 active_count=0 watchlist_count=0
 
   # First pass: count deals per group
   while IFS= read -r line; do
     if [[ "$line" =~ ^\s*\[Triage\] ]]; then current_group="Triage"
-    elif [[ "$line" =~ ^\s*\[In\ Progress\] ]]; then current_group="In Progress"
+    elif [[ "$line" =~ ^\s*\[Active\] ]]; then current_group="Active"
+    elif [[ "$line" =~ ^\s*\[Watchlist\] ]]; then current_group="Watchlist"
     elif [[ "$line" =~ (DEAL-[0-9]+) ]]; then
       case "$current_group" in
         Triage) ((triage_count++)) ;;
-        "In Progress") ((active_count++)) ;;
+        Active) ((active_count++)) ;;
+        Watchlist) ((watchlist_count++)) ;;
       esac
     fi
   done <<< "$content"
@@ -86,6 +88,7 @@ render_deals() {
   local parts=()
   [ "$triage_count" -gt 0 ] && parts+=("${triage_count} triage")
   [ "$active_count" -gt 0 ] && parts+=("${active_count} active")
+  [ "$watchlist_count" -gt 0 ] && parts+=("${watchlist_count} watching")
   if [ ${#parts[@]} -gt 0 ]; then
     local joined
     joined=$(IFS=' · '; echo "${parts[*]}")
@@ -94,6 +97,34 @@ render_deals() {
   printf '\n'
   printf "  ${GREY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"
 
+  # ── Colorize display status ─────────────────────────────────────────
+  # Takes a display status string, returns it wrapped in ANSI color
+  colorize_status() {
+    local s="$1"
+    case "$s" in
+      scheduled)          printf "${GREEN}● scheduled${RESET}" ;;
+      "reached out")      printf "${CYAN}◐ reached out${RESET}" ;;
+      "pending outreach") printf "${YELLOW}○ pending outreach${RESET}" ;;
+      "draft ready")      printf "${YELLOW}○ draft ready${RESET}" ;;
+      "in progress")      printf "${CYAN}◐ in progress${RESET}" ;;
+      new)                printf "${GREEN}● new${RESET}" ;;
+      queued)             printf "${DIM}○ queued${RESET}" ;;
+      watching)           printf "${DIM}◌ watching${RESET}" ;;
+      snoozed*)           printf "${DIM}◌ ${s}${RESET}" ;;
+      *)                  printf "${DIM}${s}${RESET}" ;;
+    esac
+  }
+
+  # Colorize age tag
+  colorize_age_tag() {
+    local s="$1"
+    case "$s" in
+      stale)  printf "${RED}stale${RESET}" ;;
+      aging)  printf "${AMBER}aging${RESET}" ;;
+      *)      printf "${DIM}${s}${RESET}" ;;
+    esac
+  }
+
   # ── Second pass: render deals ─────────────────────────────────────────
   current_group=""
   local in_deal=0 deal_id="" deal_name="" deal_url="" deal_meta=""
@@ -101,13 +132,7 @@ render_deals() {
   flush_deal() {
     if [ -n "$deal_id" ]; then
       # Render the deal
-      local icon=""
-      case "$current_group" in
-        Triage) icon="${GREEN}●${RESET}" ;;
-        "In Progress") icon="${CYAN}◐${RESET}" ;;
-      esac
-
-      printf "  %b " "$icon"
+      printf "  "
       if [ -n "$deal_url" ]; then
         osc8 "$deal_url" "$(printf "${ORANGE}%s${RESET}" "$deal_id")"
       else
@@ -115,8 +140,37 @@ render_deals() {
       fi
       printf "  ${WHITE}%s${RESET}\n" "$deal_name"
 
+      # Render meta line with colorized status
       if [ -n "$deal_meta" ]; then
-        printf "    ${DIM}%s${RESET}\n" "$deal_meta"
+        printf "    "
+        # Split meta by ' · ' and colorize first token (display status)
+        local IFS_OLD="$IFS"
+        local first=1
+        local token
+        # Use read to split on ' · '
+        while [ -n "$deal_meta" ]; do
+          # Extract next token before ' · '
+          if [[ "$deal_meta" == *" · "* ]]; then
+            token="${deal_meta%% · *}"
+            deal_meta="${deal_meta#* · }"
+          else
+            token="$deal_meta"
+            deal_meta=""
+          fi
+
+          if [ "$first" -eq 1 ]; then
+            first=0
+            colorize_status "$token"
+          else
+            # Check if it's an age tag
+            case "$token" in
+              stale|aging) printf " ${DIM}·${RESET} " ; colorize_age_tag "$token" ;;
+              *)           printf " ${DIM}· %s${RESET}" "$token" ;;
+            esac
+          fi
+        done
+        IFS="$IFS_OLD"
+        printf '\n'
       fi
     fi
     deal_id="" ; deal_name="" ; deal_url="" ; deal_meta=""
@@ -129,11 +183,17 @@ render_deals() {
       printf '\n'
       printf "  ${WHITE}Triage${RESET} ${DIM}(%s)${RESET}\n" "$triage_count"
 
-    elif [[ "$line" =~ ^\s*\[In\ Progress\] ]]; then
+    elif [[ "$line" =~ ^\s*\[Active\] ]]; then
       flush_deal
-      current_group="In Progress"
+      current_group="Active"
       printf '\n'
       printf "  ${WHITE}Active${RESET} ${DIM}(%s)${RESET}\n" "$active_count"
+
+    elif [[ "$line" =~ ^\s*\[Watchlist\] ]]; then
+      flush_deal
+      current_group="Watchlist"
+      printf '\n'
+      printf "  ${WHITE}Watchlist${RESET} ${DIM}(%s)${RESET}\n" "$watchlist_count"
 
     elif [[ "$line" =~ ^\ \ (DEAL-[0-9]+)\ \ (.+) ]]; then
       flush_deal

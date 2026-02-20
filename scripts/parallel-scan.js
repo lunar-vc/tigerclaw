@@ -41,7 +41,7 @@ const PATENT_SCAN_SCRIPT = join(PROJECT_ROOT, 'scripts/patent-scan.js');
 
 const MEMORY_BASE = join(
   process.env.HOME, '.claude/projects',
-  '-Users-morrisclay-Dev-tigerclaw', 'memory/themes'
+  '-Users-mick-Dropbox-Development-tigerclaw', 'memory/themes'
 );
 
 const ALL_DOMAINS = [
@@ -105,6 +105,9 @@ const TITLE_DOMAIN_HINTS = {
   'sandbox': 'security',
   'manufactur': 'manufacturing',
   'material': 'materials',
+  'interatomic': 'materials',
+  'mace': 'materials',
+  'molecular dynamics': 'materials',
   'aerospace': 'aerospace',
   'satellite': 'aerospace',
   'network': 'networks',
